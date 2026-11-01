@@ -8,6 +8,7 @@ import threading
 import uuid
 import webbrowser
 from concurrent.futures import CancelledError, Future
+from email.message import Message
 from functools import partial
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -83,6 +84,9 @@ class HookServer(QObject):
 
 		class Handler(BaseHTTPRequestHandler):
 			def do_POST(self) -> None:
+				if not is_local_request(self.headers):
+					self.send_error(403)
+					return
 				event = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
 				relay.emit(event)
 				match event["hook_event_name"]:
@@ -208,6 +212,24 @@ class Session(QObject):
 
 
 # Functions
+def is_local_request(headers: Message) -> bool:
+	""" Whether a request comes from a program of this computer, not a web page (`Origin`, rebound `Host`).
+
+	>>> request = Message()
+	>>> request["Host"] = "127.0.0.1:50000"
+	>>> is_local_request(request)
+	True
+	>>> request["Origin"] = "https://example.com"
+	>>> is_local_request(request)
+	False
+	>>> del request["Origin"]
+	>>> request.replace_header("Host", "example.com:50000")
+	>>> is_local_request(request)
+	False
+	"""
+	return "Origin" not in headers and re.fullmatch(r"127\.0\.0\.1:\d+", headers.get("Host", "")) is not None
+
+
 def wait_for_answer(ask: SignalInstance) -> bytes:
 	""" The hook's reply to a permission request: the user's spoken decision, or nothing so that the dialog stays as it is. """
 	answer: Future[bool] = Future()
