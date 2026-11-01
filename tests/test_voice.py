@@ -138,8 +138,8 @@ def test_the_sentence_given_to_whisper_as_context_does_not_wake_her_when_it_writ
 
 def test_the_volume_is_set_in_the_config_whether_or_not_the_file_has_the_key(tmp_path: Path) -> None:
 	config = tmp_path / "config.toml"
-	config.write_text('city = ""\n', encoding="utf-8")
+	config.write_text('cancel = "stop"\n', encoding="utf-8")
 	save_volume(0.5, config)
 	save_volume(0.25, config)
-	assert config.read_text(encoding="utf-8") == 'city = ""\n\nvolume = 0.25\n'
+	assert config.read_text(encoding="utf-8") == 'cancel = "stop"\n\nvolume = 0.25\n'
 

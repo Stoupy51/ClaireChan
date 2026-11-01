@@ -8,7 +8,7 @@ from datetime import datetime
 
 from PySide6.QtGui import QGuiApplication
 
-from clairechan.config import SCREENSHOTS, Config
+from clairechan.config import SCREENSHOTS
 from clairechan.i18n import tr
 from clairechan.report import Report
 from clairechan.services import agents, claude, desktop, minecraft, programs, weather
@@ -135,11 +135,11 @@ ACTIONS: list[Action] = [
 	),
 	Action(
 		name="weather",
-		description="The weather now and for the day in a city, the one of the config when none is given.",
+		description="The weather now and for the day in a city, which the user must name.",
 		phrases=r"(?:(?:quelle est|donne-moi|dis-moi|what's|what is|tell me) )?(?:la météo|the weather|quel temps (?:fait-il|il fait))"
 		r"(?: (?:à|a|de|pour|sur|in|at) (?P<city>.+))?",
 		run=lambda arguments: forecast(arguments.get("city") or ""),
-		parameters={"city": "Name of the city, the one of the config by default."},
+		parameters={"city": "Name of the city."},
 	),
 	Action(
 		name="launch_program",
@@ -310,9 +310,8 @@ def set_timer(amount: str, unit: str, label: str) -> str:
 
 
 def forecast(city: str) -> str:
-	city = city or Config.load().city
 	if not city:
-		return tr("Tell me the city, or put it in the config (city).", "Dis-moi la ville, ou mets-la dans la config (city).")
+		return tr("Tell me the city.", "Dis-moi la ville.")
 	return weather.forecast(city)
 
 
