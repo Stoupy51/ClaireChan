@@ -1,13 +1,17 @@
 """ Her avatar, pill and tray icon, built again from the code of `clairechan.overlay` and of this module once a reload changes it. """
 # Imports
+import ctypes
+from ctypes import windll
 from dataclasses import replace
 from functools import partial
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QObject, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtWidgets import QWidget
 
 from clairechan.config import Config, save_volume
 from clairechan.overlay import avatar as avatar_module, tray as tray_module
+from clairechan.services.desktop import full_screen
 from clairechan.session import Session
 from clairechan.voice.listener import Listener
 from clairechan.voice.speech import Voice
@@ -18,6 +22,10 @@ if TYPE_CHECKING:
 # Constants
 OVERLAY: str = "clairechan.overlay"
 """ The package whose reloaded modules, or images, make the windows be built again. """
+GWL_EXSTYLE: int = -20
+WS_EX_TRANSPARENT: int = 0x20
+""" Extended style that lets the clicks on a window go to the one under it. """
+FULL_SCREEN_CHECK_MS: int = 500
 
 
 # Classes
@@ -51,6 +59,15 @@ class Windows(QObject):
 		self.pill = avatar_module.Pill(config.avatar_zoom)
 		self.tray = tray_module.Tray(config.volume)
 		self.tray.show()
+		self.full_screen_check = QTimer(self.avatar)
+		self.full_screen_check.setInterval(FULL_SCREEN_CHECK_MS)
+		self.full_screen_check.timeout.connect(self.pass_clicks_through_in_full_screen)
+		self.full_screen_check.start()
+
+	def pass_clicks_through_in_full_screen(self) -> None:
+		""" Lets the clicks reach a full screen game under her, which her translucent windows would catch. """
+		for window in (self.avatar, self.pill):
+			set_clicks_through(window, full_screen())
 
 	def wire(self) -> None:
 		self.tray.quit_requested.connect(self.quit_requested)
@@ -71,6 +88,14 @@ class Windows(QObject):
 
 
 # Functions
+def set_clicks_through(window: QWidget, through: bool) -> None:
+	hwnd = int(window.winId())
+	style: int = windll.user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
+	wanted = style | WS_EX_TRANSPARENT if through else style & ~WS_EX_TRANSPARENT
+	if wanted != style:
+		windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ctypes.c_long(wanted))
+
+
 def set_volume(voice: Voice, listener: Listener, volume: float) -> None:
 	""" Applies a volume picked in the tray to her voice, and to the config the listener holds so that saving it announces nothing. """
 	voice.volume = volume
