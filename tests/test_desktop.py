@@ -49,3 +49,28 @@ def edit_number(listing: str) -> str:
 	assert match
 	return match[1]
 
+
+
+def test_she_asks_again_after_ten_minutes_and_every_time_for_a_sensitive_element(monkeypatch: pytest.MonkeyPatch) -> None:
+	now = 1000.0
+	monkeypatch.setattr(time, "monotonic", lambda: now)
+	monkeypatch.setattr(desktop, "APPROVED", {"firefox.exe": now + desktop.APPROVAL_S})
+	harmless = desktop.Element(auto.Control(), "firefox.exe", "Edit Search")
+	sensitive = desktop.Element(auto.Control(), "firefox.exe", "Button Envoyer")
+	monkeypatch.setattr(desktop, "ELEMENTS", {"1": harmless, "2": sensitive})
+
+	assert desktop.permission("mcp__clairechan__press", {"element": "1"}) is None
+	assert desktop.permission("mcp__clairechan__press", {"element": "2"})
+	now += desktop.APPROVAL_S + 1
+	assert desktop.permission("mcp__clairechan__press", {"element": "1"})
+
+
+def test_her_spoken_permission_lets_her_act_where_the_config_only_reads(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	user_config = tmp_path / "config.toml"
+	user_config.write_text('apps = { "firefox.exe" = "read" }' + chr(10), encoding="utf-8")
+	monkeypatch.setattr(config, "USER_CONFIG", user_config)
+	monkeypatch.setattr(desktop, "GRANTED", {})
+	assert desktop.level("firefox.exe") == "read"
+	desktop.allow_acting("Firefox")
+	assert desktop.level("firefox.exe") == "act"
+

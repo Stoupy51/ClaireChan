@@ -87,7 +87,7 @@ A request that is exactly one of the phrases below is done by the app itself, at
 | Weather | *"what's the weather in Lyon"*, *"quel temps fait-il"* | The weather now and for the day, in the city you name |
 | Mute | *"mute"*, *"coupe le son"* | Mutes the PC's sound, or unmutes it |
 | Open a program | Any request, through the session (`launch_program` tool) | Opens the program whose Start menu shortcut matches the name |
-| Use an application | Any request, through the session (`list_windows`, `read_window`, `look_window`, `press`, `fill` tools) | Reads the windows of the applications of the `apps` config key, and presses or fills what they show in those set to `"act"`, after asking you once. She never takes the focus from a game |
+| Use an application | Any request, through the session (`list_windows`, `read_window`, `look_window`, `press`, `fill` tools) | Reads the windows of the applications of the `apps` config key, and presses or fills what they show in those set to `"act"`, after asking you, again every 10 min and each time for a button that sends, pays, deletes or logs in. *"Tu peux agir dans Firefox"* lets her act for 10 min in a program set to `"read"`. She never takes the focus from a game |
 | ShadowPlay clip | *"clip that"*, *"enregistre ça"* | Presses Alt+F10 |
 | Test Minecraft | Any request, through the session (`minecraft_*` tools) | Starts a Minecraft 26.3 test client of its own (`tools/minecraft/`, never your game), joins a server, runs commands, reads the chat, holds keys and takes screenshots |
 

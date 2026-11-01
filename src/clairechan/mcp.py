@@ -66,7 +66,7 @@ def answer(request: JsonDict, relay: SignalInstance) -> JsonDict | None:
 				"serverInfo": {"name": "clairechan", "version": "1"},
 			}
 		case "tools/list":
-			result = {"tools": [tool(action) for action in actions.ACTIONS]}
+			result = {"tools": [tool(action) for action in actions.ACTIONS if not action.spoken_only]}
 		case "tools/call":
 			result = call(request["params"], relay)
 		case "ping":
@@ -83,6 +83,8 @@ def tool(action: actions.Action) -> JsonDict:
 
 def call(params: JsonDict, relay: SignalInstance) -> JsonDict:
 	action = actions.find(params["name"])
+	if action.spoken_only:
+		return {"content": [{"type": "text", "text": f"{action.name} is for the user to say aloud"}], "isError": True}
 	arguments = {name: str(value) for name, value in params.get("arguments", {}).items()}
 	text: Future[str] = Future()
 	relay.emit(action, arguments, text)

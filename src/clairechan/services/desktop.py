@@ -8,6 +8,7 @@ so it waits until the user is away from keyboard and mouse.
 import ctypes
 import functools
 import os
+import re
 import time
 from _ctypes import COMError
 from collections.abc import Callable
@@ -44,8 +45,18 @@ SHOWN: tuple[int, ...] = (auto.PropertyId.ControlTypeProperty, auto.PropertyId.N
 """ Properties `read_window` lists, read in the same request as the elements: one call each would take seconds. """
 DESCENDANTS: int = 4
 """ `TreeScope_Descendants`. """
-APPROVED: set[str] = set()
-""" Applications the user let her act in since the app started. """
+APPROVAL_S: float = 600.0
+""" How long the user's yes to acting in an application lasts. """
+APPROVED: dict[str, float] = {}
+""" When the user's yes to acting in an application, by its program, runs out. """
+GRANTED: dict[str, float] = {}
+""" When the user's spoken permission to act in an application the config only lets her read runs out. """
+SENSITIVE: re.Pattern[str] = re.compile(
+	r"\b(?:send|submit|pay|buy|purchase|checkout|order|confirm|delete|remove|erase|publish|post|transfer|password|sign in|log in"
+	r"|envoyer|valider|payer|acheter|commander|confirmer|supprimer|effacer|publier|virement|mot de passe|connexion|se connecter)\b",
+	re.IGNORECASE,
+)
+""" Names of elements she asks about every time, whatever the application and the yes she already has. """
 ACTING_TOOLS: frozenset[str] = frozenset({"mcp__clairechan__press", "mcp__clairechan__fill"})
 NEVER: frozenset[str] = frozenset({"windowsterminal.exe", "openconsole.exe", "conhost.exe", "cmd.exe", "powershell.exe", "pwsh.exe"})
 """ Terminals, which would give her a shell outside Claude Code's permissions, whatever the config says. """
@@ -161,15 +172,36 @@ def fill(element: str, text: str) -> str:
 def permission(tool: str, tool_input: dict[str, object]) -> str | None:
 	""" Why the session must ask the user before this tool call: her first action in an application since the app started. """
 	found = ELEMENTS.get(str(tool_input.get("element"))) if tool in ACTING_TOOLS else None
-	if not found or found.app in APPROVED:
+	if not found:
 		return None
-	return f"First time Claire acts in {found.app} since ClaireChan started: {found.label}"
+	if SENSITIVE.search(found.label):
+		return f"Claire acts on a sensitive element in {found.app}: {found.label}"
+	if APPROVED.get(found.app, 0.0) > time.monotonic():
+		return None
+	return f"Claire acts in {found.app} for the first time in {round(APPROVAL_S / 60)} min: {found.label}"
 
 
 def access(pid: int) -> tuple[str, str]:
 	""" The file name of the process's program in lower case, and what she may do in it: "read", "act", or "" for nothing. """
 	app = executable(pid)
-	return app, "" if pid == os.getpid() or app in NEVER else Config.load().apps.get(app, "")
+	return app, "" if pid == os.getpid() or app in NEVER else level(app)
+
+
+def level(app: str) -> str:
+	""" What the config lets her do in this program, "act" while the user's spoken permission lasts for a program set to "read". """
+	configured = Config.load().apps.get(app, "")
+	return "act" if configured == "read" and GRANTED.get(app, 0.0) > time.monotonic() else configured
+
+
+def allow_acting(application: str) -> str:
+	""" Lets her act for `APPROVAL_S` in an application the config only lets her read. """
+	app = application.strip().lower().removesuffix(".exe") + ".exe"
+	configured = Config.load().apps.get(app, "")
+	if configured != "read":
+		return tr(f"{app} is not set to read in the config.", f"{app} n'est pas en lecture dans la config.")
+	GRANTED[app] = time.monotonic() + APPROVAL_S
+	minutes = round(APPROVAL_S / 60)
+	return tr(f"Done, I can act in {app} for {minutes} min.", f"C'est fait, je peux agir dans {app} pendant {minutes} min.")
 
 
 def executable(pid: int) -> str:
@@ -273,9 +305,10 @@ def usable(element: str) -> Element:
 	found = ELEMENTS.get(element)
 	if not found:
 		raise RefusedError(tr("No element has this number: read the window again.", "Aucun élément n'a ce numéro, relis la fenêtre."))
-	if found.app in NEVER or Config.load().apps.get(found.app) != "act":
+	if found.app in NEVER or level(found.app) != "act":
 		raise RefusedError(tr(f"The user lets me only read {found.app}.", f"L'utilisateur me laisse seulement lire {found.app}."))
-	APPROVED.add(found.app)
+	if APPROVED.get(found.app, 0.0) <= time.monotonic():
+		APPROVED[found.app] = time.monotonic() + APPROVAL_S
 	return found
 
 

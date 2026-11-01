@@ -31,6 +31,8 @@ class Action:
 	""" Each argument the action takes, with what it is. """
 	threaded: bool = False
 	""" Whether it runs on a thread of its own as a tool, taking seconds that would freeze the Qt thread. """
+	spoken_only: bool = False
+	""" Whether only the user's request can do it, never the session as a tool. """
 
 
 # Constants
@@ -140,6 +142,14 @@ ACTIONS: list[Action] = [
 		r"(?: (?:à|a|de|pour|sur|in|at) (?P<city>.+))?",
 		run=lambda arguments: forecast(arguments.get("city") or ""),
 		parameters={"city": "Name of the city."},
+	),
+	Action(
+		name="allow_acting",
+		description="Lets her press and fill in an application the config only lets her read.",
+		phrases=r"(?:tu peux|vous pouvez|you can) (?:agir|utiliser|act|use|press|appuyer)(?: (?:dans|sur|in|on))? (?P<application>.+)",
+		run=lambda arguments: desktop.allow_acting(arguments["application"] or ""),
+		parameters={"application": "File name of its program."},
+		spoken_only=True,
 	),
 	Action(
 		name="launch_program",

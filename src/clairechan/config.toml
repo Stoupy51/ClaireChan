@@ -59,11 +59,12 @@ voice_style = 1431611904
 volume = 1.0
 
 # Applications whose windows she may use, by the file name of their program: "read" to read them, "act" to also press buttons and fill fields.
-# She asks you the first time she acts in one since the app started. Terminals stay closed to her, whatever this says.
+# She asks you the first time she acts in one, then again after 10 min, and every time for a button or field that sends, pays, deletes or logs in.
+# Say "tu peux agir dans Firefox" to let her act for 10 min in a program set to "read". Terminals stay closed to her, whatever this says.
 # She never presses a key nor moves the mouse. In VS Code, Discord, Edge, or a field of Firefox, an action brings the window to the front,
 # so she waits until you leave keyboard and mouse alone for 3 s in one of these applications, never a game, with nothing full screen,
 # then gives you your window back.
-apps = { "firefox.exe" = "act", "Code.exe" = "act", "Discord.exe" = "read" }
+apps = { "firefox.exe" = "read", "Code.exe" = "act", "Discord.exe" = "read" }
 
 # Your additions to the system prompt of the hidden Claude session, after what the app writes there itself:
 # where ClaireChan is installed and how it started the session. Write them between the two ''' lines, for example:

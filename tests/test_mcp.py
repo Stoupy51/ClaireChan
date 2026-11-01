@@ -30,7 +30,7 @@ def test_every_action_is_a_tool_and_a_call_runs_it_with_its_arguments(app: QAppl
 		while not (listed.done() and called.done()):
 			app.processEvents()
 
-	assert [tool["name"] for tool in listed.result()["tools"]] == [action.name for action in ACTIONS]
+	assert [tool["name"] for tool in listed.result()["tools"]] == [action.name for action in ACTIONS if not action.spoken_only]
 	result = called.result()
 	assert result["content"] == [{"type": "text", "text": "screenshot {'screen': '2'}"}]
 
