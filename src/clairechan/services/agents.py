@@ -2,6 +2,7 @@
 # Imports
 import json
 import time
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
@@ -41,8 +42,13 @@ def progress() -> str:
 def describe_agent(transcript: Path, now: float) -> str:
 	""" One line about an agent: its task, running or finished, its age, its tool calls and what it did last. """
 	meta: JsonDict = json.loads(transcript.with_suffix(".meta.json").read_text(encoding="utf-8"))
-	rows: list[JsonDict] = [json.loads(line) for line in transcript.read_text(encoding="utf-8").splitlines()]
+	rows: list[JsonDict] = []
+	for line in transcript.read_text(encoding="utf-8").splitlines():
+		with suppress(json.JSONDecodeError):
+			rows.append(json.loads(line))
 	answers = [row["message"] for row in rows if row["type"] == "assistant"]
+	if not answers:
+		return tr(f"{meta['description']}: starting.", f"{meta['description']} : démarrage.")
 	calls = [block for answer in answers for block in answer["content"] if block["type"] == "tool_use"]
 	finished = answers[-1].get("stop_reason") == "end_turn" or (bool(calls) and calls[-1]["name"] == HANDBACK)
 	idle_s = now - transcript.stat().st_mtime

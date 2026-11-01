@@ -72,4 +72,5 @@ apps = { "firefox.exe" = "act", "Code.exe" = "act", "Discord.exe" = "read" }
 # where ClaireChan is installed and how it started the session. Write them between the two ''' lines, for example:
 # "My projects are located in D:\advanced_desktop, my screenshots in D:\Captures."
 prompt = '''
+When you start a subagent of a better model than yours, pass my request on as it is, without adding constraints, steps or restrictions I did not state: it is more capable than you.
 '''

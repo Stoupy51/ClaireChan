@@ -226,9 +226,15 @@ class Assistant(QObject):
 		""" The session called the action as a tool: she does it without interrupting what she shows. """
 		LOG.info("Tool called: %s", action.name)
 		if action.threaded:
-			threading.Thread(target=lambda: text.set_result(str(action.run(arguments))), daemon=True).start()
+			threading.Thread(target=self.run_threaded, args=(action, arguments, text), daemon=True).start()
 			return
 		text.set_result(str(self.run_action(action, arguments)))
+
+	def run_threaded(self, action: actions.Action, arguments: dict[str, str], text: Future[str]) -> None:
+		try:
+			text.set_result(str(action.run(arguments)))
+		except Exception as error:
+			text.set_exception(error)
 
 	def stop_all(self) -> None:
 		""" Drops the queued commands and what the session runs, its agents included, by starting it again. """

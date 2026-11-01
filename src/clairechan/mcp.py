@@ -87,4 +87,6 @@ def call(params: JsonDict, relay: SignalInstance) -> JsonDict:
 		return {"content": [{"type": "text", "text": text.result(CALL_TIMEOUT_S)}]}
 	except TimeoutError:
 		return {"content": [{"type": "text", "text": f"{action.name} did not answer"}], "isError": True}
+	except Exception as error:
+		return {"content": [{"type": "text", "text": f"{action.name} failed: {error!r}"}], "isError": True}
 
