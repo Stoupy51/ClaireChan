@@ -60,7 +60,7 @@ Say *"Hey Claire, ..."*: she shows up as soon as she hears it, shows the sentenc
 Her own lines are in French when you speak French, in English otherwise.
 Her Japanese voice says her replies and her permission requests: Claude Haiku translates each line, which takes a little of your plan's usage, and AivisSpeech says it on the CPU, about 4 s after the bubble shows.
 
-You may pause while you speak: she sends your request after 15 s of silence, or as soon as you say *"done"* (or *"terminé"*) as a sentence of its own after a pause, or end it with *"over"* (or *"c'est tout"*). *"Cancel"* said alone, or *"cancel prompt"* at the end, drops it. The bubble reminds you of the word.
+You may pause while you speak: she sends your request after 15 s of silence, or as soon as you say *"done"* (or *"terminé"*, *"termine"*) as a sentence of its own after a pause, or end it with *"over"* (or *"c'est tout"*). *"Cancel"* said alone, or *"cancel prompt"* at the end, drops it. The bubble reminds you of the word.
 
 - When she asks your permission, say *"yes"* or *"no"* as a sentence of its own, within 60 s. Otherwise answer in Claude Code or on claude.ai as usual.
 - A click on a link or a path in her bubble opens it. A click on her or on her pill opens Claude Code's Remote Control on claude.ai, and a long press on either drags it.

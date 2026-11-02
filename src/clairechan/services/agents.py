@@ -58,7 +58,6 @@ def describe_agent(transcript: Path, now: float) -> str:
 	started = datetime.fromisoformat(next(row["timestamp"] for row in rows if "timestamp" in row))
 	age_min = round((now - started.timestamp()) / 60)
 	silent = tr("silent for ", "silencieux depuis ") + f"{round(idle_s / 60)} min"
-	# TODO: IF YOU SEE THIS, SOMETIMES WHISPER WRITE "termine" WITHOUT THE ACCENT, SO WE NEED TO SUPPORT THAT TOO. DO IT NOW
 	state = tr("finished", "terminé") if finished else tr("running", "en cours") if idle_s < ACTIVE_S else silent
 	last = describe_tool(calls[-1]["name"], calls[-1]["input"]) if calls else "-"
 	return tr(

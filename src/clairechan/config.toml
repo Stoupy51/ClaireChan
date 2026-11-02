@@ -17,7 +17,7 @@ wake = '^\W*(?:hey|hé|he|eh|et|dis|ok|okay)\W+(?:claire|clair|clare|clerc|clèr
 # The others count at the end of the request. She reminds you of the first of `done_alone` in English, of its last in French.
 pause_s = 15.0
 done = "over|c'est tout|envoie"
-done_alone = "done|fin|terminé"
+done_alone = "done|fin|termine|terminé"
 cancel = "cancel prompt|laisse tomber"
 cancel_alone = "cancel|annule"
 
