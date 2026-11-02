@@ -64,14 +64,19 @@ def test_an_automatic_compaction_keeps_the_turn_running(assistant: Assistant) ->
 	assert sent == []
 
 
-def test_background_work_keeps_the_pill_until_its_result(assistant: Assistant) -> None:
+def log_nothing(session_transcript: str, agent_id: str) -> None:
+	pass
+
+
+def test_background_work_keeps_the_pill_until_its_result(assistant: Assistant, monkeypatch: pytest.MonkeyPatch) -> None:
+	monkeypatch.setattr("clairechan.app.log_usage", log_nothing)
 	assistant.on_hook(hook("UserPromptSubmit", prompt="range le projet"))
 	assistant.on_hook(hook("SubagentStart", agent_id="a1", agent_type="expert"))
 	assistant.on_hook(hook("Stop", last_assistant_message="Je confie ça à l'expert."))
 	assistant.leave()
 	assert assistant.pill.isVisible()
 
-	assistant.on_hook(hook("SubagentStop", agent_id="a1", agent_type="expert", last_assistant_message="Rangé."))
+	assistant.on_hook(hook("SubagentStop", agent_id="a1", agent_type="expert", transcript_path="", last_assistant_message="Rangé."))
 	assistant.on_hook(hook("UserPromptSubmit", prompt="L'expert a fini."))
 	assistant.on_hook(hook("Stop", last_assistant_message="Le projet est rangé."))
 	assert not assistant.pill.isVisible()

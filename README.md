@@ -82,6 +82,7 @@ A request that is exactly one of the phrases below is done by the app itself, at
 | Switch model | *"switch to Opus"*, *"passe en Sonnet"* | Types `/model` into the session once its current request is done |
 | Compact the conversation | *"compacte la conversation"* | Types `/compact` into the session once its current request is done |
 | Context of the session | *"show me the context"*, *"le contexte"*, or the tray menu | How full the hidden session's context window is, as `/context` reports it |
+| Agent usage | *"usage des agents"*, *"agent costs"* | What the background agents used over the last day by model: tokens written and read, largest context. Each agent that stops adds a line to `usage.jsonl` next to the config |
 | Plan usage | *"my usage"*, *"mon usage"*, or the tray menu | Share of the 5-hour window and of the week used, as `/usage` reports it |
 | Timer | *"set a timer for 10 minutes"*, *"mets un minuteur de 5 min"* | Rings with a chime and a message once the time is up |
 | Weather | *"what's the weather in Lyon"*, *"quel temps fait-il"* | The weather now and for the day, in the city you name |

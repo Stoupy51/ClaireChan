@@ -157,3 +157,20 @@ def test_the_agent_progress_tells_what_a_running_agent_and_a_finished_one_did(tm
 	assert "2 tool calls, last: edits app.py" in report
 	assert "agent-done: finished" in report
 
+
+
+def test_an_agent_that_stops_is_logged_and_summed_by_model(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	session = tmp_path / "s1.jsonl"
+	folder = tmp_path / "s1" / "subagents"
+	folder.mkdir(parents=True)
+	(folder / "agent-a1.meta.json").write_text(json.dumps({"description": "Lot", "model": "sonnet"}), encoding="utf-8")
+	usage = {"input_tokens": 10, "cache_read_input_tokens": 2_000_000, "cache_creation_input_tokens": 0, "output_tokens": 5000}
+	rows = [{"type": "assistant", "message": {"usage": usage}}, {"type": "assistant", "message": {"usage": usage}}, {"type": "user"}]
+	(folder / "agent-a1.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n{cut", encoding="utf-8")
+	monkeypatch.setattr(agents, "USAGE_LOG", tmp_path / "usage.jsonl")
+
+	agents.log_usage(str(session), "a1")
+	agents.log_usage(str(session), "a1")
+
+	assert agents.usage_today() == "sonnet: 1 agents, 2 turns, 10k written, 4M read, largest context 2000k."
+

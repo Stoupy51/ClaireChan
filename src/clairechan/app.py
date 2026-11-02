@@ -31,7 +31,7 @@ from clairechan.overlay import avatar as avatar_module, bubble as bubble_module
 from clairechan.reload import Reloader
 from clairechan.report import Report
 from clairechan.services import claude
-from clairechan.services.agents import describe_tool
+from clairechan.services.agents import describe_tool, log_usage
 from clairechan.services.alarms import ALARMS
 from clairechan.session import HookServer, JsonDict, Session
 from clairechan.voice.audio import GPU, microphone
@@ -266,6 +266,7 @@ class Assistant(QObject):
 				self.shrink()
 			case "SubagentStop":
 				self.agents.discard(event["agent_id"])
+				threading.Thread(target=log_usage, args=(event["transcript_path"], event["agent_id"]), daemon=True).start()
 			case "Stop":
 				self.on_stop(event["last_assistant_message"])
 			case "StopFailure":

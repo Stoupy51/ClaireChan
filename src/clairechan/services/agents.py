@@ -2,13 +2,15 @@
 # Imports
 import json
 import time
+from collections import defaultdict
 from contextlib import suppress
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
 from stouputils.typing import JsonDict
 
+from clairechan.config import APP_DATA
 from clairechan.i18n import tr
 from clairechan.services import desktop
 from clairechan.session import SESSION_ID
@@ -23,6 +25,10 @@ ACTIVE_S: int = 180
 MAX_AGENTS: int = 3
 HANDBACK: str = "SubagentHandback"
 """ The tool an agent ends with, to hand its report back. """
+USAGE_LOG: Path = APP_DATA / "usage.jsonl"
+""" One line per time an agent stopped, holding what it used since it started: the last line of an agent is its total. """
+CONTEXT_KINDS: tuple[str, ...] = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
+""" The usage fields adding up to what the model read on a turn. """
 
 
 # Functions
@@ -42,10 +48,7 @@ def progress() -> str:
 def describe_agent(transcript: Path, now: float) -> str:
 	""" One line about an agent: its task, running or finished, its age, its tool calls and what it did last. """
 	meta: JsonDict = json.loads(transcript.with_suffix(".meta.json").read_text(encoding="utf-8"))
-	rows: list[JsonDict] = []
-	for line in transcript.read_text(encoding="utf-8").splitlines():
-		with suppress(json.JSONDecodeError):
-			rows.append(json.loads(line))
+	rows = read_rows(transcript)
 	answers = [row["message"] for row in rows if row["type"] == "assistant"]
 	if not answers:
 		return tr(f"{meta['description']}: starting.", f"{meta['description']} : démarrage.")
@@ -55,12 +58,65 @@ def describe_agent(transcript: Path, now: float) -> str:
 	started = datetime.fromisoformat(next(row["timestamp"] for row in rows if "timestamp" in row))
 	age_min = round((now - started.timestamp()) / 60)
 	silent = tr("silent for ", "silencieux depuis ") + f"{round(idle_s / 60)} min"
+	# TODO: IF YOU SEE THIS, SOMETIMES WHISPER WRITE "termine" WITHOUT THE ACCENT, SO WE NEED TO SUPPORT THAT TOO. DO IT NOW
 	state = tr("finished", "terminé") if finished else tr("running", "en cours") if idle_s < ACTIVE_S else silent
 	last = describe_tool(calls[-1]["name"], calls[-1]["input"]) if calls else "-"
 	return tr(
 		f"{meta['description']}: {state}, {age_min} min, {len(calls)} tool calls, last: {last}.",
 		f"{meta['description']} : {state}, {age_min} min, {len(calls)} appels d'outils, dernier : {last}.",
 	)
+
+
+def log_usage(session_transcript: str, agent_id: str) -> None:
+	""" Appends to `USAGE_LOG` what an agent used so far: its model, tokens, turns and the largest context it read. """
+	transcript = Path(session_transcript).with_suffix("") / "subagents" / f"agent-{agent_id}.jsonl"
+	usages = [row["message"]["usage"] for row in read_rows(transcript) if row["type"] == "assistant" and "usage" in row["message"]]
+	meta: JsonDict = json.loads(transcript.with_suffix(".meta.json").read_text(encoding="utf-8"))
+	line = {
+		"time": datetime.now().isoformat(timespec="seconds"), "agent": agent_id, "description": meta["description"],
+		"model": meta.get("model", ""), "turns": len(usages),
+		"peak_context": max((sum(usage.get(kind, 0) for kind in CONTEXT_KINDS) for usage in usages), default=0),
+		**{kind: sum(usage.get(kind, 0) for usage in usages) for kind in (*CONTEXT_KINDS, "output_tokens")},
+	}
+	with USAGE_LOG.open("a", encoding="utf-8") as log:
+		log.write(json.dumps(line) + "\n")
+
+
+def usage_today() -> str:
+	""" What the agents used over the last day, one line per model. """
+	since = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
+	totals: dict[str, JsonDict] = {}
+	for line in USAGE_LOG.read_text(encoding="utf-8").splitlines() if USAGE_LOG.exists() else []:
+		row: JsonDict = json.loads(line)
+		if row["time"] >= since:
+			totals[row["agent"]] = row
+
+	if not totals:
+		return tr("No agent used anything in the last day.", "Aucun agent n'a rien consommé depuis un jour.")
+
+	by_model: defaultdict[str, list[JsonDict]] = defaultdict(list)
+	for row in totals.values():
+		by_model[row["model"]].append(row)
+	return "\n".join(describe_usage(model, rows) for model, rows in by_model.items())
+
+
+def describe_usage(model: str, rows: list[JsonDict]) -> str:
+	""" One line about the agents of a model: number, turns, thousands of tokens written, millions read, largest context. """
+	turns, written = sum(row["turns"] for row in rows), sum(row["output_tokens"] for row in rows) // 1000
+	read, peak = sum(row["cache_read_input_tokens"] for row in rows) // 1_000_000, max(row["peak_context"] for row in rows) // 1000
+	return tr(
+		f"{model}: {len(rows)} agents, {turns} turns, {written}k written, {read}M read, largest context {peak}k.",
+		f"{model} : {len(rows)} agents, {turns} tours, {written}k écrits, {read}M relus, plus grand contexte {peak}k.",
+	)
+
+
+def read_rows(transcript: Path) -> list[JsonDict]:
+	""" The entries of a transcript, leaving out a line still being written. """
+	rows: list[JsonDict] = []
+	for line in transcript.read_text(encoding="utf-8").splitlines():
+		with suppress(json.JSONDecodeError):
+			rows.append(json.loads(line))
+	return rows
 
 
 def describe_tool(name: str, tool_input: JsonDict) -> str:

@@ -92,6 +92,12 @@ ACTIONS: list[Action] = [
 		threaded=True,
 	),
 	Action(
+		name="agent_usage",
+		description="What the background agents used over the last day, by model: tokens written and read, largest context.",
+		phrases=r"(?:usage|consommation|coûts?) (?:des |de l')?agents?|agents? (?:usage|costs?)",
+		run=lambda _: agents.usage_today(),
+	),
+	Action(
 		name="clip",
 		description="Saves the last minutes of the game with ShadowPlay, by pressing Alt+F10.",
 		phrases=r"(?:enregistre|clippe|clip|save)(?: (?:ça|ca|ce moment|les dernières minutes|that|it|the replay))?",
