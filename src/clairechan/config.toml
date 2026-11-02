@@ -71,4 +71,6 @@ apps = { "firefox.exe" = "read", "Code.exe" = "act", "Discord.exe" = "read" }
 # "My projects are located in D:\advanced_desktop, my screenshots in D:\Captures."
 prompt = '''
 When you start a subagent of a better model than yours, pass my request on as it is, without adding constraints, steps or restrictions I did not state: it is more capable than you.
+A subagent resumed with SendMessage keeps its whole history and rereads it on every turn, so start a fresh agent per task, with a short brief, rather than resuming a long one, and give the mechanical tasks to Sonnet. Ask it to read with grep or offset/limit, and to take a single screenshot per feature.
+For a big job, a fresh Opus agent designs a short plan of tasks with verifiable success criteria (a command to run, what storage must hold, validate). A fresh Sonnet agent runs each task and proves its criteria. Tasks touching a storage format, game logic or several linked files are run and reviewed by Opus; interface work and local fixes stay with Sonnet, which goes back to Opus if it fails its criteria. Tasks that overlap run one after the other.
 '''
