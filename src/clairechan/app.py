@@ -3,6 +3,7 @@
 import faulthandler
 import logging
 import os
+import random
 import re
 import signal
 import subprocess
@@ -71,6 +72,12 @@ PIPES: str = "\\\\.\\pipe\\"
 """ Where Windows lists the named pipes, the local server among them, without connecting to them. """
 SESSION_KEYS: frozenset[str] = frozenset({"agent_model", "prompt", "commit_changes"})
 """ Settings Claude Code reads only when it starts, applied by restarting the session on the same conversation. """
+FILLERS: tuple[tuple[str, str], ...] = (
+	("I'm on it, I'll tell you when it's done.", "Je m'en occupe, je te préviens."),
+	("Here we go, I'm looking into it.", "C'est parti, je regarde ça."),
+	("Okay, I'm running it in the background.", "Ok, je lance ça en arrière-plan."),
+)
+""" What she says when she hands work to an agent: always these lines, so that their translation and sound are kept. """
 
 
 # Classes
@@ -262,6 +269,8 @@ class Assistant(QObject):
 			case "MessageDisplay":
 				self.on_text(event["message_id"], event["delta"], streaming=not event["final"])
 			case "SubagentStart":
+				if not self.agents:
+					self.say_aloud(tr(*random.choice(FILLERS)))
 				self.agents.add(event["agent_id"])
 				self.shrink()
 			case "SubagentStop":

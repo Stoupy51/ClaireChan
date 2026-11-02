@@ -8,8 +8,9 @@ from PySide6.QtWidgets import QApplication
 
 import clairechan.config
 from clairechan.actions import VK_MUTE
-from clairechan.app import Assistant
+from clairechan.app import FILLERS, Assistant
 from clairechan.config import DEFAULTS, Config
+from clairechan.i18n import tr
 from clairechan.overlay import avatar as avatar_module
 from clairechan.overlay.avatar import Avatar, Pill
 from clairechan.session import JsonDict
@@ -81,6 +82,17 @@ def test_background_work_keeps_the_pill_until_its_result(assistant: Assistant, m
 	assistant.on_hook(hook("Stop", last_assistant_message="Le projet est rangé."))
 	assert not assistant.pill.isVisible()
 	assert assistant.avatar.bubble.text == "Le projet est rangé."
+
+
+def test_she_says_one_filler_when_the_first_agent_starts(assistant: Assistant) -> None:
+	said: list[str] = []
+	def record(text: str, _style: int) -> None:
+		said.append(text)
+	assistant.speak.connect(record)
+	assistant.on_hook(hook("SubagentStart", agent_id="a1"))
+	assistant.on_hook(hook("SubagentStart", agent_id="a2"))
+	assert len(said) == 1
+	assert said[0] in [tr(*filler) for filler in FILLERS]
 
 
 def test_permission_is_asked_then_thanked(assistant: Assistant) -> None:
