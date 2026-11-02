@@ -23,7 +23,7 @@ cancel_alone = "cancel|annule"
 
 # When she asks your permission, say one of these words, as a sentence of its own, to answer her.
 # Regexes matched ignoring case. Clicking on her and answering in Claude Code works as well.
-allow = "yes|ok|go|oui|vas-y|d'accord|はい"
+allow = "yes|ok|go|oui|vas-y|d'accord|はい|ハイ|hai"
 deny = "no|non|refuse|pas question|いいえ"
 
 # Model of the hidden Claude session, which answers quick requests: "sonnet", "opus", "haiku", or a full model name
