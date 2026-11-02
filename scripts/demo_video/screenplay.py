@@ -11,7 +11,7 @@ WHISPER_S: float = 0.2
 """ How long after the end of a sentence Whisper hands it over. """
 JAPANESE_REQUEST: str = "自己紹介してくれる?"
 JAPANESE_REPLY: tuple[str, ...] = (
-	"はじめまして、クロードたんです!",
+	"はじめまして、クレールです!",
 	"日本語でも大丈夫ですよ。",
 )
 """ Her reply streamed in two pieces, whatever the language of the video: Claude answers in the one it is asked in. """
