@@ -208,7 +208,8 @@ def background_work(play: Timeline, words: Words) -> None:
 	play.cue(Read())
 	# After her reply rather than before it, as it comes, so that she shrinks to the pill once instead of blinking through it
 	play.hook("SubagentStart", then=1.6, agent_id="dark-mode", agent_type="worker")
-	play.hook("SubagentStop", then=0.1, agent_id="dark-mode", agent_type="worker", last_assistant_message=words.dark_mode_done)
+	play.hook("SubagentStop", then=0.1, transcript_path="", agent_id="dark-mode", agent_type="worker",
+		last_assistant_message=words.dark_mode_done)
 	play.hook("UserPromptSubmit", then=0.3, prompt="<task-notification>")
 	play.hook("Stop", then=0.0, last_assistant_message=words.dark_mode_done)
 	play.cue(Read())
@@ -238,7 +239,8 @@ def make_her_yours(play: Timeline, words: Words) -> None:
 	play.cue(Drag(by=(340.0, 268.0), seconds=1.3), then=1.5)
 	play.cue(Tune(volume=0.35), then=3.1)
 	play.cue(wide, then=0.8)
-	play.hook("SubagentStop", then=0.1, agent_id="tests", agent_type="worker", last_assistant_message=words.tests_done)
+	play.hook("SubagentStop", then=0.1, transcript_path="", agent_id="tests", agent_type="worker",
+		last_assistant_message=words.tests_done)
 	play.hook("UserPromptSubmit", then=0.3, prompt="<task-notification>")
 	play.hook("Stop", then=0.0, last_assistant_message=words.tests_done)
 	play.cue(Read())

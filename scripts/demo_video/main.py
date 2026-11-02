@@ -228,6 +228,7 @@ class Studio:
 
 		stack.enter_context(patch.object(clairechan.config, "USER_CONFIG", DEFAULTS))
 		stack.enter_context(patch.object(clairechan.app, "QTimer", ClockTimer))
+		stack.enter_context(patch.object(clairechan.app, "log_usage", skip_usage_log))
 		stack.enter_context(patch.object(avatar_module, "chime", self.chime))
 		stack.enter_context(patch.object(clairechan.voice.listener, "time", SimpleNamespace(monotonic=lambda: Clock.seconds)))
 		stack.enter_context(patch.object(Avatar, "now", video_time))
@@ -652,6 +653,10 @@ class Studio:
 
 
 # Functions
+def skip_usage_log(_session_transcript: str, _agent_id: str) -> None:
+	pass
+
+
 def video_time(_avatar: Avatar) -> float:
 	return Clock.seconds
 

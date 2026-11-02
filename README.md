@@ -7,7 +7,7 @@
 
 </div>
 
-https://github.com/user-attachments/assets/e2820f10-1f87-489a-a312-c4bfd2b80bcb
+https://github.com/user-attachments/assets/bad92ce2-0506-47a4-8705-b209f68f0216
 
 > [!NOTE]
 > Work in progress: the roadmap is in [PLAN.md](PLAN.md), in French.
