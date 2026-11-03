@@ -127,7 +127,7 @@ class Assistant(QObject):
 		self.long_task = QTimer(self)
 		self.long_task.setSingleShot(True)
 		self.long_task.setInterval(LONG_TASK_MS)
-		self.long_task.timeout.connect(self.shrink)
+		self.long_task.timeout.connect(self.shrink_unless_showing)
 		self.dismiss = QTimer(self)
 		self.dismiss.setSingleShot(True)
 		self.dismiss.timeout.connect(self.leave)
@@ -272,7 +272,7 @@ class Assistant(QObject):
 				if not self.agents:
 					self.say_aloud(tr(*random.choice(FILLERS)))
 				self.agents.add(event["agent_id"])
-				self.shrink()
+				self.shrink_unless_showing()
 			case "SubagentStop":
 				self.agents.discard(event["agent_id"])
 				threading.Thread(target=log_usage, args=(event["transcript_path"], event["agent_id"]), daemon=True).start()
@@ -305,7 +305,7 @@ class Assistant(QObject):
 	def on_tool(self, activity: str) -> None:
 		LOG.info("Action: %s", activity)
 		self.worked = True
-		if activity != self.activity and not self.asking and not self.pill.isVisible():
+		if activity != self.activity and not self.asking and not self.pill.isVisible() and not self.showing_while_agents_run():
 			self.activity = activity
 			self.appear("working", bubble=activity)
 
@@ -354,7 +354,7 @@ class Assistant(QObject):
 	def on_text(self, message_id: str, delta: str, *, streaming: bool) -> None:
 		self.message = self.message + delta if message_id == self.message_id else delta
 		self.message_id = message_id
-		if not self.pill.isVisible():
+		if not self.pill.isVisible() and not self.showing_while_agents_run():
 			self.appear("idle", bubble=self.message, talking=streaming)
 
 	def on_stop(self, reply: str) -> None:
@@ -410,6 +410,15 @@ class Assistant(QObject):
 		self.pill.hide()
 		self.avatar.set_expression(expression, talking=talking, bubble=bubble)
 		self.avatar.pop_in()
+
+	def showing_while_agents_run(self) -> bool:
+		""" Whether the bubble holds something she was asked for, which the tool calls and texts of the agents must not replace. """
+		return bool(self.agents) and self.dismiss.isActive()
+
+	def shrink_unless_showing(self) -> None:
+		""" Gives way to the pill, but not while the bubble holds something she was asked for. """
+		if not self.dismiss.isActive():
+			self.shrink()
 
 	def shrink(self) -> None:
 		self.avatar.pop_out()
