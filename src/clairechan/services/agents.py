@@ -12,6 +12,7 @@ from stouputils.typing import JsonDict
 
 from clairechan.config import APP_DATA
 from clairechan.i18n import tr
+from clairechan.report import Report, Slice
 from clairechan.services import desktop
 from clairechan.session import SESSION_ID
 
@@ -81,8 +82,8 @@ def log_usage(session_transcript: str, agent_id: str) -> None:
 		log.write(json.dumps(line) + "\n")
 
 
-def usage_today() -> str:
-	""" What the agents used over the last day, one line per model. """
+def usage_today() -> Report:
+	""" What the agents used over the last day, one slice per model sized by the tokens it wrote. """
 	since = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
 	totals: dict[str, JsonDict] = {}
 	for line in USAGE_LOG.read_text(encoding="utf-8").splitlines() if USAGE_LOG.exists() else []:
@@ -91,22 +92,29 @@ def usage_today() -> str:
 			totals[row["agent"]] = row
 
 	if not totals:
-		return tr("No agent used anything in the last day.", "Aucun agent n'a rien consommé depuis un jour.")
+		return Report(tr("No agent used anything in the last day.", "Aucun agent n'a rien consommé depuis un jour."), ())
 
 	by_model: defaultdict[str, list[JsonDict]] = defaultdict(list)
 	for row in totals.values():
 		by_model[row["model"]].append(row)
-	return "\n".join(describe_usage(model, rows) for model, rows in by_model.items())
-
-
-def describe_usage(model: str, rows: list[JsonDict]) -> str:
-	""" One line about the agents of a model: number, turns, thousands of tokens written, millions read, largest context. """
-	turns, written = sum(row["turns"] for row in rows), sum(row["output_tokens"] for row in rows) // 1000
-	read, peak = sum(row["cache_read_input_tokens"] for row in rows) // 1_000_000, max(row["peak_context"] for row in rows) // 1000
-	return tr(
-		f"{model}: {len(rows)} agents, {turns} turns, {written}k written, {read}M read, largest context {peak}k.",
-		f"{model} : {len(rows)} agents, {turns} tours, {written}k écrits, {read}M relus, plus grand contexte {peak}k.",
+	written = {model: sum(row["output_tokens"] for row in rows) for model, rows in by_model.items()}
+	turns = {model: sum(row["turns"] for row in rows) for model, rows in by_model.items()}
+	slices = tuple(
+		Slice(
+			key=model, label=model,
+			amount=tr(f"{len(rows)} agents, {turns[model]} turns", f"{len(rows)} agents, {turns[model]} tours"),
+			share=tr(f"{written[model] // 1000}k written", f"{written[model] // 1000}k écrits"),
+			fraction=written[model] / max(sum(written.values()), 1),
+		)
+		for model, rows in by_model.items()
 	)
+	read = sum(row["cache_read_input_tokens"] for row in totals.values()) // 1_000_000
+	peak = max(row["peak_context"] for row in totals.values()) // 1000
+	title = tr(
+		f"Agents, last day\n{read}M read, largest context {peak}k",
+		f"Agents, dernier jour\n{read}M relus, plus grand contexte {peak}k",
+	)
+	return Report(title, slices)
 
 
 def read_rows(transcript: Path) -> list[JsonDict]:

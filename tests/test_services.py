@@ -94,9 +94,9 @@ def test_the_plan_usage_and_the_context_are_laid_out_for_a_human_in_french(monke
 		"Consignes MCP : 717 (0,1\u00a0%)\n"
 		"Libre : 636,7k (63,7\u00a0%)"
 	)
-	assert claude.plan_usage() == (
-		"Forfait Claude\nFenêtre de 5 h : 22\u00a0% utilisés, renouvelée Oct 14, 1:30am\n"
-		"Semaine : 27\u00a0% utilisés, renouvelée Oct 19, 12am"
+	assert str(claude.plan_usage()) == (
+		"Forfait Claude\nFenêtre de 5 h : renouvelée Oct 14, 1:30am (22\u00a0%)\n"
+		"Semaine : renouvelée Oct 19, 12am (27\u00a0%)"
 	)
 
 
@@ -172,5 +172,5 @@ def test_an_agent_that_stops_is_logged_and_summed_by_model(tmp_path: Path, monke
 	agents.log_usage(str(session), "a1")
 	agents.log_usage(str(session), "a1")
 
-	assert agents.usage_today() == "sonnet: 1 agents, 2 turns, 10k written, 4M read, largest context 2000k."
+	assert str(agents.usage_today()) == "Agents, last day\n4M read, largest context 2000k\nsonnet: 1 agents, 2 turns (10k written)"
 

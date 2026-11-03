@@ -4,6 +4,7 @@ import html
 import itertools
 import math
 import re
+from collections.abc import Sequence
 
 from PySide6.QtCore import QPointF, QRectF, QSize, QSizeF, Qt, QUrl
 from PySide6.QtGui import (
@@ -22,7 +23,7 @@ from PySide6.QtGui import (
 )
 
 from clairechan.overlay.effects import ACCENT, halo, overshoot, star
-from clairechan.report import Report
+from clairechan.report import Report, Slice
 
 # Constants
 WIDTH: int = 400
@@ -34,6 +35,7 @@ REPORT_HEIGHT: float = 290.0
 SLICE_COLORS: dict[str, str] = {
 	"Messages": "#3b82f6", "System tools": "#ea5a2b", "Memory files": "#1fa97a", "Skills": "#d99a1e", "System prompt": "#9ca3af",
 	"MCP tools": "#8b5cf6", "MCP server instructions": "#6b7280", "Autocompact buffer": "#4b5563", "Free space": "#e3dccf",
+	"Window": "#ea5a2b", "Week": "#3b82f6", "opus": "#8b5cf6", "sonnet": "#3b82f6", "haiku": "#1fa97a",
 }
 """ The color of each part of the context, in the order of the usual `/context` bar. """
 PADDING: float = 16.0
@@ -297,20 +299,29 @@ def plain(text: str) -> str:
 def report_markup(report: Report) -> str:
 	""" The title, a bar of the colored slices, and a table of them, each part in the color of its slice. """
 	title = markup(report.title)
-	bar = "".join(
-		f'<td width="{100 * part.fraction:.1f}%" bgcolor="{SLICE_COLORS.get(part.key, "#9ca3af")}" style="font-size: 9pt">&nbsp;</td>'
-		for part in report.slices if part.fraction >= 0.005
-	)
 	rows = "".join(
 		f'<tr><td><span style="color: {SLICE_COLORS.get(part.key, "#9ca3af")}">&#9632;</span> {markup(part.label)}</td>'
 		f'<td align="right">{markup(part.amount)}</td><td align="right">{markup(part.share)}</td></tr>'
+		+ ("" if report.stacked else f'<tr><td colspan="3">{bar_markup([part])}</td></tr>')
 		for part in report.slices
 	)
 	return (
 		f'<p style="line-height: 118%; color: {INK.name()}">{title}</p>'
-		f'<table width="100%" cellspacing="0" cellpadding="0"><tr>{bar}</tr></table>'
-		f'<table width="100%" cellspacing="0" cellpadding="2" style="font-size: 10pt; color: {INK.name()}">{rows}</table>'
+		+ (bar_markup(report.slices) if report.stacked else "")
+		+ f'<table width="100%" cellspacing="0" cellpadding="2" style="font-size: 10pt; color: {INK.name()}">{rows}</table>'
 	)
+
+
+def bar_markup(parts: Sequence[Slice]) -> str:
+	""" A bar made of the parts side by side, each as wide as its fraction, the rest left empty. """
+	cells = "".join(
+		f'<td width="{100 * part.fraction:.1f}%" bgcolor="{SLICE_COLORS.get(part.key, "#9ca3af")}" style="font-size: 9pt">&nbsp;</td>'
+		for part in parts if part.fraction >= 0.005
+	)
+	rest = 1 - sum(part.fraction for part in parts)
+	empty = f'<td width="{100 * rest:.1f}%" bgcolor="#e3dccf" style="font-size: 9pt">&nbsp;</td>'
+	track = empty if len(parts) == 1 and rest > 0.005 else ""
+	return f'<table width="100%" cellspacing="0" cellpadding="0"><tr>{cells}{track}</tr></table>'
 
 
 def markup(text: str) -> str:

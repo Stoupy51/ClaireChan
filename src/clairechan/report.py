@@ -24,6 +24,8 @@ class Report:
 	""" A title and the parts of a whole, which the bubble draws as a bar and a colored table and anything else reads as text. """
 	title: str
 	slices: tuple[Slice, ...]
+	stacked: bool = True
+	""" Whether the slices share one bar, or each is a fraction of its own bar. """
 
 	def __str__(self) -> str:
 		rows = (f"{part.label}{tr(': ', ' : ')}{part.amount} ({part.share})" for part in self.slices)

@@ -30,18 +30,23 @@ MAGNITUDES: dict[str, int] = {"k": 1000, "m": 1_000_000}
 
 
 # Functions
-def plan_usage() -> str:
-	""" How much of the 5-hour window and of the week the subscription has used, one limit per line. """
+def plan_usage() -> Report:
+	""" How much of the 5-hour window and of the week the subscription has used, each on its own bar with its reset date. """
 	match = PLAN_USAGE.search(panel("/usage"))
 	if not match:
-		return tr("I couldn't read your usage.", "Je n'ai pas réussi à lire ton usage.")
-	window_reset, week_reset = without_zone(match["window_reset"]), without_zone(match["week_reset"])
-	return tr(
-		f"Claude plan\n5-hour window: {match['window']}% used, resets {window_reset}"
-		f"\nWeek: {match['week']}% used, resets {week_reset}",
-		f"Forfait Claude\nFenêtre de 5 h : {match['window']}\u00a0% utilisés, renouvelée {window_reset}"
-		f"\nSemaine : {match['week']}\u00a0% utilisés, renouvelée {week_reset}",
+		return Report(tr("I couldn't read your usage.", "Je n'ai pas réussi à lire ton usage."), ())
+	limits = (
+		("Window", tr("5-hour window", "Fenêtre de 5 h"), "window"),
+		("Week", tr("Week", "Semaine"), "week"),
 	)
+	slices = tuple(
+		Slice(
+			key=key, label=label, amount=tr("resets ", "renouvelée ") + without_zone(match[f"{group}_reset"]),
+			share=tr(f"{match[group]}%", french(f"{match[group]}%")), fraction=int(match[group]) / 100,
+		)
+		for key, label, group in limits
+	)
+	return Report(tr("Claude plan", "Forfait Claude"), slices, stacked=False)
 
 
 def context() -> Report:
