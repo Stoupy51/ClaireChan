@@ -1,6 +1,7 @@
 """ Her avatar, pill and tray icon, built again from the code of `clairechan.overlay` and of this module once a reload changes it. """
 # Imports
 import ctypes
+import logging
 from ctypes import windll
 from dataclasses import replace
 from functools import partial
@@ -9,7 +10,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QObject, QTimer, Signal
 from PySide6.QtWidgets import QWidget
 
-from clairechan.config import Config, save_volume
+from clairechan.config import Config, save_setting
 from clairechan.overlay import avatar as avatar_module, tray as tray_module
 from clairechan.services.desktop import full_screen
 from clairechan.session import Session
@@ -20,6 +21,7 @@ if TYPE_CHECKING:
 	from clairechan.app import Assistant
 
 # Constants
+LOG: logging.Logger = logging.getLogger("clairechan")
 OVERLAY: str = "clairechan.overlay"
 """ The package whose reloaded modules, or images, make the windows be built again. """
 GWL_EXSTYLE: int = -20
@@ -47,22 +49,28 @@ class Windows(QObject):
 		if not any(name.startswith((OVERLAY, __name__)) for name in modules):
 			return
 		for window in (self.avatar, self.pill, self.tray):
+			LOG.info("Replacing %s", type(window).__name__)
 			window.hide()
 			window.deleteLater()
 		self.build(self.listener.config)
 		self.assistant.avatar, self.assistant.pill = self.avatar, self.pill
 		self.wire()
+		LOG.info("Her windows are replaced")
 
 	def build(self, config: Config) -> None:
 		self.avatar = avatar_module.Avatar(config.avatar_zoom, config.text_zoom)
 		self.avatar.bubble.typing_speed = config.typing_speed
 		self.pill = avatar_module.Pill(config.avatar_zoom)
-		self.tray = tray_module.Tray(config.volume)
+		self.tray = tray_module.Tray(config.volume, config.fps)
 		self.tray.show()
 		self.full_screen_check = QTimer(self.avatar)
 		self.full_screen_check.setInterval(FULL_SCREEN_CHECK_MS)
 		self.full_screen_check.timeout.connect(self.pass_clicks_through_in_full_screen)
 		self.full_screen_check.start()
+
+	def save_settings(self) -> None:
+		save_setting("volume", f"{self.listener.config.volume:.2f}")
+		save_setting("fps", f'"{self.listener.config.fps}"')
 
 	def pass_clicks_through_in_full_screen(self) -> None:
 		""" Lets the clicks reach a full screen game under her, which her translucent windows would catch. """
@@ -74,7 +82,10 @@ class Windows(QObject):
 		self.tray.action_requested.connect(self.assistant.announce)
 		self.tray.open_session.connect(self.session.open)
 		self.tray.volume_changed.connect(partial(set_volume, self.voice, self.listener))
-		self.tray.menu.closed.connect(lambda: save_volume(self.listener.config.volume))
+		self.tray.fps_changed.connect(partial(set_fps, self.listener, self.avatar, self.pill))
+		self.tray.menu.closed.connect(self.save_settings)
+		self.avatar.set_fps(self.listener.config.fps)
+		self.pill.set_fps(self.listener.config.fps)
 		self.avatar.clicked.connect(self.session.open)
 		self.pill.clicked.connect(self.session.open)
 		self.pill.menu_requested.connect(lambda: self.tray.menu.toggle_by(self.pill.geometry()))
@@ -94,6 +105,13 @@ def set_clicks_through(window: QWidget, through: bool) -> None:
 	wanted = style | WS_EX_TRANSPARENT if through else style & ~WS_EX_TRANSPARENT
 	if wanted != style:
 		windll.user32.SetWindowLongW(hwnd, GWL_EXSTYLE, ctypes.c_long(wanted))
+
+
+def set_fps(listener: Listener, avatar: avatar_module.Avatar, pill: avatar_module.Pill, fps: str) -> None:
+	""" Applies a frame rate picked in the tray to her windows and to the listener's config, so that saving it announces nothing. """
+	listener.config = replace(listener.config, fps=fps)
+	avatar.set_fps(fps)
+	pill.set_fps(fps)
 
 
 def set_volume(voice: Voice, listener: Listener, volume: float) -> None:

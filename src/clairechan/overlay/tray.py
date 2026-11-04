@@ -9,7 +9,7 @@ from PySide6.QtCore import QRect, QSize, Signal
 from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtWidgets import QSystemTrayIcon
 
-from clairechan.config import APP_DATA, LOG_FILE, USER_CONFIG
+from clairechan.config import APP_DATA, FPS_CHOICES, LOG_FILE, USER_CONFIG
 from clairechan.overlay.avatar import face
 from clairechan.overlay.menu import Entry, Menu, Slider, Switch
 
@@ -29,7 +29,10 @@ class Tray(QSystemTrayIcon):
 	volume_changed = Signal(float)
 	""" The volume of her voice the slider was moved to, from 0 to 1. """
 
-	def __init__(self, volume: float) -> None:
+	fps_changed = Signal(str)
+	""" The frame rate, one of `FPS_CHOICES`, the slider was moved to. """
+
+	def __init__(self, volume: float, fps: str) -> None:
 		super().__init__(QIcon(face(64)))
 		self.setToolTip("Claire")
 		self.menu = Menu([
@@ -38,7 +41,10 @@ class Tray(QSystemTrayIcon):
 				Entry("Session context", "\ue9d2", lambda: self.action_requested.emit("context")),
 				Entry("Plan usage", "\uec4a", lambda: self.action_requested.emit("plan_usage")),
 			],
-			[Slider("Volume", "\ue767", volume, self.volume_changed.emit)],
+			[
+				Slider("Volume", "\ue767", volume, self.volume_changed.emit),
+				Slider("Frame rate", "\ue916", FPS_CHOICES.index(fps) / (len(FPS_CHOICES) - 1), self.pick_fps, FPS_CHOICES),
+			],
 			[
 				Entry("Open the config", "\ue713", lambda: os.startfile(USER_CONFIG)),
 				Entry("View the log", "\ue8a5", lambda: os.startfile(LOG_FILE)),
@@ -48,6 +54,9 @@ class Tray(QSystemTrayIcon):
 			[Entry("Quit", "\ue7e8", self.quit_requested.emit)],
 		])
 		self.activated.connect(self.on_activated)
+
+	def pick_fps(self, value: float) -> None:
+		self.fps_changed.emit(FPS_CHOICES[round(value * (len(FPS_CHOICES) - 1))])
 
 	def on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
 		""" Opens the menu by the icon on a left or a right click, or by the cursor where the system tells no place for the icon. """

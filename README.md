@@ -65,7 +65,7 @@ You may pause while you speak: she sends your request after 15 s of silence, or 
 - When she asks your permission, say *"yes"* or *"no"* as a sentence of its own, within 60 s. Otherwise answer in Claude Code or on claude.ai as usual.
 - A click on a link or a path in her bubble opens it. A click on her or on her pill opens Claude Code's Remote Control on claude.ai, and a long press on either drags it.
 - Dropped on a second screen, she comes back there, and shows up on the main screen while it is unplugged.
-- Her tray icon, with a left or a right click, or her pill with a right click, opens her menu: the session, its context, your plan usage, her voice's volume, the config, the log, the start with Windows, and quitting.
+- Her tray icon, with a left or a right click, or her pill with a right click, opens her menu: the session, its context, your plan usage, her voice's volume, the frame rate of her windows (from the screen's own refresh rate to unlimited), the config, the log, the start with Windows, and quitting.
 
 ### 🧰 Actions
 

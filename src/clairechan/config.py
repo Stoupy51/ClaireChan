@@ -16,6 +16,8 @@ ROOT: Path = Path(__file__).resolve().parents[2]
 APP_DATA: Path = Path(os.environ["APPDATA"]) / "ClaireChan"
 DEFAULTS: Path = Path(__file__).with_name("config.toml")
 USER_CONFIG: Path = APP_DATA / "config.toml"
+FPS_CHOICES: tuple[str, ...] = ("VSync", "10", "20", "24", "30", "48", "60", "75", "90", "120", "180", "240", "360", "1000")
+""" Frame rates of her windows, from the screen's own refresh rate to 1000 per second, as the tray's slider lists them. """
 LOG_FILE: Path = APP_DATA / "clairechan.log"
 CRASH_FILE: Path = APP_DATA / "crash.log"
 """ Where a crash in native code writes the stack of each thread, which `LOG_FILE` cannot catch. """
@@ -67,6 +69,8 @@ class Config:
 	""" The AivisSpeech voice she says them in, by its style id. """
 	volume: float
 	""" How loud her voice is, from 0 to 1. """
+	fps: str
+	""" Frame rate of her windows, one of `FPS_CHOICES`. """
 
 	@classmethod
 	def load(cls) -> Self:
@@ -97,13 +101,27 @@ class Config:
 			voice=values["voice"],
 			voice_style=values["voice_style"],
 			volume=values["volume"],
+			fps=values["fps"],
 		)
 
 
-def save_volume(volume: float, path: Path = USER_CONFIG) -> None:
-	""" Writes the `volume` key of the user's config, adding it when the file predates it. """
-	text, replaced = re.subn(r"^volume\s*=.*$", f"volume = {volume:.2f}", path.read_text(encoding="utf-8"), flags=re.MULTILINE)
+def save_setting(key: str, value: str, path: Path = USER_CONFIG) -> None:
+	""" Writes `key = value`, a TOML literal, in the user's config, adding it when the file predates it. """
+	text, replaced = re.subn(rf"^{key}\s*=.*$", f"{key} = {value}", path.read_text(encoding="utf-8"), flags=re.MULTILINE)
 	if not replaced:
-		text = f"{text.rstrip()}\n\nvolume = {volume:.2f}\n"
+		text = f"{text.rstrip()}\n\n{key} = {value}\n"
 	path.write_text(text, encoding="utf-8")
+
+
+def frame_interval_ms(fps: str, refresh_rate: float) -> int:
+	""" Milliseconds between two frames at `fps`.
+
+	>>> frame_interval_ms("VSync", 180.0), frame_interval_ms("60", 180.0), frame_interval_ms("1000", 180.0)
+	(6, 17, 1)
+	"""
+	match fps:
+		case "VSync":
+			return round(1000 / refresh_rate)
+		case _:
+			return round(1000 / int(fps))
 

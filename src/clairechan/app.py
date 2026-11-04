@@ -14,6 +14,7 @@ from collections import deque
 from collections.abc import Mapping
 from concurrent.futures import Future
 from dataclasses import fields
+from datetime import datetime
 from functools import partial
 from logging.handlers import RotatingFileHandler
 
@@ -46,6 +47,8 @@ LOG: logging.Logger = logging.getLogger("clairechan")
 LOG_BYTES: int = 5_000_000
 LOG_BACKUPS: int = 20
 """ The log is cut every `LOG_BYTES`, and these many older files are kept besides the current one (about 100 MB, weeks of use). """
+CRASH_MARKER: str = "=== start "
+""" Written to the crash file at each start, so that what follows the last one is what the last run left. """
 WAKE_NOTES: tuple[float, ...] = (880.0, 1318.5)
 DONE_NOTES: tuple[float, ...] = (1046.5, 1318.5, 1568.0)
 LONG_TASK_MS: int = 20_000
@@ -159,6 +162,11 @@ class Assistant(QObject):
 		if "avatar_zoom" in changed or "text_zoom" in changed:
 			self.avatar.set_zoom(config.avatar_zoom, config.text_zoom)
 			self.pill.set_zoom(config.avatar_zoom)
+
+		if "fps" in changed:
+			self.avatar.set_fps(config.fps)
+			self.pill.set_fps(config.fps)
+
 		if "model" in changed:
 			self.switch_model(config.model)
 		self.restart_pending = self.restart_pending or not SESSION_KEYS.isdisjoint(changed)
@@ -527,6 +535,15 @@ def replace_running_app() -> None:
 		running.waitForDisconnected(COMPACT_TIMEOUT_MS + 10_000)
 
 
+def report_previous_crash() -> None:
+	""" Writes in the log what the last run left in the crash file, so that a crash shows next to the lines before it. """
+	if not CRASH_FILE.exists():
+		return
+	_, marker, last_run = CRASH_FILE.read_text(encoding="utf-8").rpartition(CRASH_MARKER)
+	if marker and (crash := last_run.partition("\n")[2].strip()):
+		LOG.critical("The previous run crashed:\n%s", crash)
+
+
 def run() -> None:
 	APP_DATA.mkdir(parents=True, exist_ok=True)
 	logging.basicConfig(
@@ -538,7 +555,10 @@ def run() -> None:
 	sys.excepthook = lambda _kind, exception, _trace: logging.critical("Uncaught error", exc_info=exception)
 	qInstallMessageHandler(log_qt_message)
 	# A crash in native code, which no Python hook sees, dumps the stack of every thread here
+	report_previous_crash()
 	crash_log = CRASH_FILE.open("a", encoding="utf-8")
+	crash_log.write(f"{CRASH_MARKER}{datetime.now():%Y-%m-%d %H:%M:%S} ===\n")
+	crash_log.flush()
 	faulthandler.enable(crash_log)
 	threading.excepthook = lambda hook: logging.critical("Uncaught error in %s", hook.thread, exc_info=hook.exc_value)
 	# Qt's event loop never hands control back to Python's KeyboardInterrupt, so let Ctrl+C end the process directly

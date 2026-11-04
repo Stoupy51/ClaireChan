@@ -75,6 +75,7 @@ class Reloader(QObject):
 			return
 
 		tools = [mcp.tool(action) for action in actions.ACTIONS]
+		LOG.info("Reloading: %s", ", ".join(order))
 		try:
 			reload(order, self.loaded)
 		except Exception as error:

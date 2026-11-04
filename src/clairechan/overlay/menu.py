@@ -54,7 +54,7 @@ SLIDE_PX: float = 10.0
 HOVER_MS: int = 120
 ICONS: str = "Segoe MDL2 Assets"
 MUTED: QColor = QColor(INK.red(), INK.green(), INK.blue(), 150)
-TRACK_LEFT: float = 92.0
+TRACK_LEFT: float = 114.0
 """ Where the slider's track starts, from the left of its row, past its icon and label. """
 VOLUME_STEP: float = 0.05
 """ Share of the slider one notch of the mouse wheel moves. """
@@ -76,11 +76,29 @@ class Entry:
 
 @dataclass
 class Slider:
-	""" A row with a slider, whose `value`, from 0 to 1 by hundredths, the menu moves as it is dragged. """
+	""" A row with a slider, whose `value`, from 0 to 1, the menu moves as it is dragged: by hundredths, or across `steps`. """
 	label: str
 	glyph: str
 	value: float
 	changed: Callable[[float], None]
+	steps: tuple[str, ...] = ()
+	""" Texts the track is divided into, the first at its left end and the last at its right end. Empty for a percentage. """
+
+	@property
+	def step(self) -> float:
+		return 1 / (len(self.steps) - 1) if self.steps else VOLUME_STEP
+
+	@property
+	def shown(self) -> str:
+		return self.steps[round(self.value / self.step)] if self.steps else f"{self.value:.0%}"
+
+	def snap(self, value: float) -> float:
+		""" `value` limited to the track and moved to the nearest hundredth, or step.
+
+		>>> Slider("Frame rate", "", 0.0, print, ("VSync", "60", "1000")).snap(0.4)
+		0.5
+		"""
+		return round(min(1.0, max(0.0, value)) / self.step) * self.step if self.steps else round(100 * min(1.0, max(0.0, value))) / 100
 
 
 @dataclass
@@ -262,7 +280,7 @@ class Menu(QWidget):
 	def wheelEvent(self, event: QWheelEvent) -> None:
 		index = self.row_at(event.position())
 		if index is not None and isinstance(row := self.rows[index][0], Slider):
-			self.set_value(row, row.value + VOLUME_STEP * event.angleDelta().y() / 120)
+			self.set_value(row, row.value + row.step * event.angleDelta().y() / 120)
 
 	def row_at(self, point: QPointF) -> int | None:
 		return next((index for index, (_, rect) in enumerate(self.rows) if rect.contains(point)), None)
@@ -290,7 +308,7 @@ class Menu(QWidget):
 		self.set_value(slider, (x - track.left()) / track.width())
 
 	def set_value(self, slider: Slider, value: float) -> None:
-		value = round(100 * min(1.0, max(0.0, value))) / 100
+		value = slider.snap(value)
 		if value != slider.value:
 			slider.value = value
 			slider.changed(value)
@@ -337,7 +355,7 @@ class Menu(QWidget):
 				painter.setPen(MUTED)
 				painter.setFont(QFont("Segoe UI", 9))
 				right = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight
-				painter.drawText(rect.adjusted(0, 0, -8, 0), right, f"{row.value:.0%}")
+				painter.drawText(rect.adjusted(0, 0, -8, 0), right, row.shown)
 			case Switch():
 				flipping = row is self.flipped and self.flip.state() == QAbstractAnimation.State.Running
 				knob = float(self.flip.currentValue()) if flipping else 1.0

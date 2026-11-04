@@ -2,10 +2,12 @@
 # Imports
 from concurrent.futures import Future
 from ctypes import windll
+from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QApplication
 
+import clairechan.app as app
 import clairechan.config
 from clairechan.actions import VK_MUTE
 from clairechan.app import FILLERS, Assistant
@@ -197,4 +199,20 @@ def test_she_stays_until_her_voice_has_said_her_reply_but_never_leaves_for_it(as
 	assistant.on_hook(hook("PermissionRequest", tool_name="Bash", tool_input={"command": "rm -r build", "description": "Delete it"}))
 	assistant.on_speaking(((0.0, "e"), (5.0, "")))
 	assert not assistant.dismiss.isActive()
+
+
+def test_previous_crash_is_logged_once_with_its_stack(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture,
+) -> None:
+	crash_file = tmp_path / "crash.log"
+	crash = "Windows fatal exception: access violation\n"
+	crash_file.write_text(f"=== start 10:00 ===\n{crash}=== start 11:00 ===\n{crash}  File windows.py, line 50\n", encoding="utf-8")
+	monkeypatch.setattr(app, "CRASH_FILE", crash_file)
+	app.report_previous_crash()
+	assert "line 50" in caplog.text
+	assert caplog.text.count("access violation") == 1
+	caplog.clear()
+	crash_file.write_text(f"{crash_file.read_text(encoding='utf-8')}=== start 12:00 ===\n", encoding="utf-8")
+	app.report_previous_crash()
+	assert not caplog.text
 

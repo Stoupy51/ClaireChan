@@ -6,6 +6,7 @@ and a right click on the pill opens the menu of her tray icon.
 # Imports
 import math
 import random
+import time
 from pathlib import Path
 from typing import override
 
@@ -46,7 +47,7 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QWidget
 
-from clairechan.config import ROOT
+from clairechan.config import ROOT, frame_interval_ms
 from clairechan.overlay.bubble import WIDTH as BUBBLE_WIDTH, Bubble
 from clairechan.overlay.effects import ACCENT, Shard, Spark, burst, flutter, glow, halo, mote, overshoot, shards, silhouette
 from clairechan.report import Report
@@ -65,6 +66,9 @@ PILL_SIZE: int = 64
 LONG_PRESS_MS: int = 200
 CLICK_SLOP: int = 6
 """ Pixels the cursor may travel during a press that still counts as a click. """
+
+PILL_SPIN_DEG_S: float = 270.0
+""" Degrees per second of the pill's arc, whatever the refresh rate of its screen. """
 WHEEL_STEP: float = 40.0
 """ Pixels of text one notch of the mouse wheel scrolls. """
 READ_S: float = 3.0
@@ -98,6 +102,8 @@ CHIME_RATE: int = 44100
 
 # Classes
 class Avatar(QWidget):
+	fps: str = "VSync"
+	""" Frame rate she is drawn at, one of `FPS_CHOICES`. """
 	clicked = Signal()
 	closed = Signal()
 	""" The cross of her bubble was clicked. """
@@ -172,6 +178,11 @@ class Avatar(QWidget):
 		self.sprite_left = max(0.0, text_zoom * BUBBLE_WIDTH / zoom - 0.3 * self.sprite_width)
 		self.halo = glow(round(0.75 * self.sprite_width), round(0.7 * SPRITE_HEIGHT), ratio)
 		self.resize(round(zoom * (self.sprite_left + self.sprite_width)), round(zoom * (SPRITE_TOP + SPRITE_HEIGHT)))
+
+	def set_fps(self, fps: str) -> None:
+		self.fps = fps
+		if self.ticker.isActive():
+			self.ticker.setInterval(frame_interval_ms(fps, self.screen().refreshRate()))
 
 	def set_zoom(self, zoom: float, text_zoom: float) -> None:
 		""" Lays her and her bubble out again, her bottom-right corner staying where she was dropped. """
@@ -265,6 +276,8 @@ class Avatar(QWidget):
 	@override
 	def showEvent(self, event: QShowEvent) -> None:
 		self.last_tick = self.now()
+		self.ticker.setTimerType(Qt.TimerType.PreciseTimer)
+		self.ticker.setInterval(frame_interval_ms(self.fps, self.screen().refreshRate()))
 		self.ticker.start()
 
 	@override
@@ -451,6 +464,8 @@ class Avatar(QWidget):
 
 class Pill(QWidget):
 	""" Her face in a disc ringed by a spinning arc, shown in her place while a long task runs. """
+	fps: str = "VSync"
+	""" Frame rate its arc spins at, one of `FPS_CHOICES`. """
 	clicked = Signal()
 	menu_requested = Signal()
 	""" A right click, which opens the menu of her tray icon by the pill. """
@@ -474,6 +489,11 @@ class Pill(QWidget):
 		self.spin.setInterval(30)
 		self.spin.timeout.connect(self.turn)
 
+	def set_fps(self, fps: str) -> None:
+		self.fps = fps
+		if self.spin.isActive():
+			self.spin.setInterval(frame_interval_ms(fps, self.screen().refreshRate()))
+
 	def set_zoom(self, zoom: float) -> None:
 		self.zoom = zoom
 		self.resize(round(PILL_SIZE * zoom), round(PILL_SIZE * zoom))
@@ -486,10 +506,12 @@ class Pill(QWidget):
 			corner = saved
 		self.move(corner - QPoint(self.width(), self.height()))
 		self.show()
+		self.spin.setTimerType(Qt.TimerType.PreciseTimer)
+		self.spin.setInterval(frame_interval_ms(self.fps, self.screen().refreshRate()))
 		self.spin.start()
 
 	def turn(self) -> None:
-		self.angle = (self.angle - 8) % 360
+		self.angle = -PILL_SPIN_DEG_S * time.monotonic() % 360
 		self.update()
 
 	@override
@@ -519,7 +541,7 @@ class Pill(QWidget):
 		sweep.setColorAt(0.12, ACCENT)
 		sweep.setColorAt(0.31, QColor(ACCENT.red(), ACCENT.green(), ACCENT.blue(), 0))
 		painter.setPen(QPen(QBrush(sweep), 4, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-		painter.drawArc(ring, self.angle * 16, 110 * 16)
+		painter.drawArc(ring, round(self.angle * 16), 110 * 16)
 
 	@override
 	def mousePressEvent(self, event: QMouseEvent) -> None:
