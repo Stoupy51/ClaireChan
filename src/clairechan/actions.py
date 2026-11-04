@@ -136,7 +136,7 @@ ACTIONS: list[Action] = [
 		description="Rings after a while, with a sound and a message, and says what the timer is for when given.",
 		phrases=r"(?:(?:mets|lance|démarre|règle|programme|set|start) )?(?:un |a )?(?:minuteur|timer)(?: de| pour| of| for)?"
 		r" (?P<amount>\d+(?:[.,]\d+)?) ?(?P<unit>secondes?|seconds?|sec|s|minutes?|min|heures?|hours?|h)?",
-		run=lambda arguments: set_timer(arguments["amount"] or "0", arguments.get("unit") or "m", arguments.get("label") or ""),
+		run=lambda arguments: set_timer(arguments.get("amount") or "0", arguments.get("unit") or "m", arguments.get("label") or ""),
 		parameters={
 			"amount": "How long, as a number.", "unit": "seconds, minutes or hours, minutes by default.", "label": "What it is for.",
 		},
@@ -214,7 +214,7 @@ ACTIONS: list[Action] = [
 	Action(
 		name="minecraft_connect",
 		description="Joins a server with the test client, whose player is ClaireChan, so the server needs online-mode=false.",
-		run=lambda arguments: minecraft.call("/connect", {"address": arguments["address"] or "localhost"}),
+		run=lambda arguments: minecraft.call("/connect", {"address": arguments.get("address") or "localhost"}),
 		parameters={"address": "host:port, localhost by default."},
 		threaded=True,
 	),
@@ -234,7 +234,7 @@ ACTIONS: list[Action] = [
 	Action(
 		name="minecraft_chat",
 		description="The chat, system and action bar lines the test client received from an index on, and the next index.",
-		run=lambda arguments: minecraft.call("/chat", {"after": arguments["after"] or "0"}),
+		run=lambda arguments: minecraft.call("/chat", {"after": arguments.get("after") or "0"}),
 		parameters={"after": "Index of the first line, 0 by default."},
 		threaded=True,
 	),
@@ -242,14 +242,14 @@ ACTIONS: list[Action] = [
 		name="minecraft_hold",
 		description="Holds a key of the test client for some ticks, after one click: forward, back, left, right, jump, sneak, sprint, "
 		"use, attack, drop, swapOffhand, inventory or hotbar.1 to hotbar.9.",
-		run=lambda arguments: minecraft.call("/hold", {"key": arguments["key"] or "", "ticks": arguments["ticks"] or "1"}),
+		run=lambda arguments: minecraft.call("/hold", {"key": arguments["key"] or "", "ticks": arguments.get("ticks") or "1"}),
 		parameters={"key": "The key's name.", "ticks": "How long, in ticks of 1/20 s, 1 by default."},
 		threaded=True,
 	),
 	Action(
 		name="minecraft_look",
 		description="Turns the test client's player to a rotation.",
-		run=lambda arguments: minecraft.call("/look", {"yaw": arguments["yaw"] or "0", "pitch": arguments["pitch"] or "0"}),
+		run=lambda arguments: minecraft.call("/look", {"yaw": arguments.get("yaw") or "0", "pitch": arguments.get("pitch") or "0"}),
 		parameters={"yaw": "Degrees, 0 south, 90 west.", "pitch": "Degrees, -90 up, 90 down."},
 		threaded=True,
 	),

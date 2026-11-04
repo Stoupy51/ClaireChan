@@ -126,7 +126,7 @@ def test_a_minecraft_tool_relays_the_bridge_answer_and_says_when_the_client_is_o
 	server = HTTPServer(("127.0.0.1", 0), Bridge)
 	threading.Thread(target=server.handle_request, daemon=True).start()
 	monkeypatch.setattr(minecraft, "BRIDGE", f"http://127.0.0.1:{server.server_port}")
-	assert find("minecraft_hold").run({"key": "use", "ticks": None}) == '{"ok":true}'
+	assert find("minecraft_hold").run({"key": "use"}) == '{"ok":true}'
 	assert received == [{"key": "use", "ticks": "1"}]
 
 	server.server_close()
