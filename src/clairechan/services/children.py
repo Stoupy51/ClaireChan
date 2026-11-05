@@ -67,8 +67,8 @@ CHILDREN: Children = Children()
 def claude(*arguments: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
 	env = {name: value for name, value in os.environ.items() if name not in NESTED_SESSION_VARS}
 	return subprocess.run(
-		["claude", *arguments], cwd=cwd, env=env, capture_output=True, text=True, encoding="utf-8", timeout=60,
-		creationflags=subprocess.CREATE_NO_WINDOW,
+		["claude", *arguments], cwd=cwd, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
+		timeout=60, creationflags=subprocess.CREATE_NO_WINDOW,
 	)
 
 
