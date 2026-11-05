@@ -17,6 +17,8 @@ READY: str = "ready\n"
 """ Last line the app writes once started. The lines up to it are relayed to `clairechan`, which returns on it. """
 RESTART: int = 3
 """ Exit code of an app quitting to be started again on its changed code. """
+MAX_CRASHES: int = 3
+""" Crashes in a row, of an app that had got ready, after which the launcher gives up instead of looping. """
 CHANGED: str = "changed: "
 """ Start of the line an app quitting with `RESTART` writes, then the JSON `{"files": [...], "since": commit}` of the change. """
 LAUNCHER_LOG: Path = Path(os.environ["APPDATA"]) / "ClaireChan" / "launcher.log"
@@ -33,9 +35,11 @@ def main() -> None:
 	since = ""
 	env = dict(os.environ)
 	relay = True
+	crashes = 0
 	while True:
-		ready, change = run_app(env, relay=relay)
+		ready, change, code = run_app(env, relay=relay)
 		relay = relay and not ready
+		crashes = crashes + 1 if ready and not change and code != 0 else 0
 		env.pop(SET_ASIDE, None)
 		if change:
 			files, since = change["files"], change["since"]
@@ -43,15 +47,15 @@ def main() -> None:
 			set_aside(files, since)
 			env[SET_ASIDE] = ", ".join(Path(file).name for file in files)
 			files = []
-		else:
+		elif not crashes or crashes >= MAX_CRASHES:
 			return
 
 
-def run_app(env: dict[str, str], *, relay: bool) -> tuple[bool, JsonDict]:
+def run_app(env: dict[str, str], *, relay: bool) -> tuple[bool, JsonDict, int]:
 	""" Runs the app until it quits, relaying its lines up to `READY` when `relay` is set.
 
 	Returns:
-		Whether it got ready, and the change it quit to apply, empty for none.
+		Whether it got ready, the change it quit to apply, empty for none, and its exit code.
 	"""
 	app = subprocess.Popen(
 		[sys.executable, "-m", "clairechan.app"], stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -66,8 +70,9 @@ def run_app(env: dict[str, str], *, relay: bool) -> tuple[bool, JsonDict]:
 		elif relay and not ready:
 			print(line, end="", flush=True)
 		ready = ready or line == READY
-	logging.info("App exited with code %#x, ready=%s, change announced=%s", app.wait() & 0xFFFFFFFF, ready, bool(change))
-	return ready, change
+	code = app.wait() & 0xFFFFFFFF
+	logging.info("App exited with code %#x, ready=%s, change announced=%s", code, ready, bool(change))
+	return ready, change, code
 
 
 def set_aside(files: list[str], since: str) -> None:
