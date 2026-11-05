@@ -13,6 +13,7 @@ from clairechan.i18n import tr
 from clairechan.report import Report
 from clairechan.services import agents, claude, desktop, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
+from clairechan.services.children import CHILDREN
 from clairechan.voice.meeting import MEETING
 
 
@@ -89,6 +90,21 @@ ACTIONS: list[Action] = [
 		phrases=r"(?:il |elle )?(?:en est|est en) où(?: là)?|où en (?:est|sont)(?: l'agent| les agents| le travail)?"
 		r"|(?:agent )?progress|how(?:'s| is) the agent(?: doing)?",
 		run=lambda _: agents.progress(),
+		threaded=True,
+	),
+	Action(
+		name="child_session",
+		description=(
+			"Starts a child Claude session in the background (claude --bg) that the user can read in their Code list on claude.ai, "
+			"for a long job instead of a subagent. The brief must hold the rules a subagent brief holds and the path of a rapport.md "
+			"the session writes when done. You are told when it has finished. Never stop it with claude stop."
+		),
+		run=lambda arguments: CHILDREN.start(arguments["name"] or "", arguments["brief"] or "", arguments["folder"] or ""),
+		parameters={
+			"name": "Short name of the session, shown in the user's list.",
+			"brief": "What the session must do, with the rules and the report path.",
+			"folder": "Project folder the session works in.",
+		},
 		threaded=True,
 	),
 	Action(

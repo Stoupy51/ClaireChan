@@ -35,6 +35,7 @@ from clairechan.report import Report
 from clairechan.services import claude
 from clairechan.services.agents import describe_tool, log_usage
 from clairechan.services.alarms import ALARMS
+from clairechan.services.children import CHILDREN
 from clairechan.session import HookServer, JsonDict, Session
 from clairechan.voice.audio import GPU, microphone
 from clairechan.voice.listener import FOLLOW_UP_S, Listener
@@ -230,6 +231,14 @@ class Assistant(QObject):
 	def on_announce(self, text: str | Report) -> None:
 		self.appear("present", bubble=text)
 		self.dismiss.start(reading_ms(str(text)))
+
+	def on_child_finished(self, name: str, child_id: str) -> None:
+		LOG.info("Child session finished: %s", name)
+		self.commands.append(tr(
+			f"The child session {name} ({child_id}) has finished its turn: read its rapport.md and sum it up for me.",
+			f"La session fille {name} ({child_id}) a fini son tour : lis son rapport.md et résume-le-moi.",
+		))
+		self.flush()
 
 	def on_alarm(self, label: str) -> None:
 		avatar_module.chime(*DONE_NOTES)
@@ -583,6 +592,7 @@ def run() -> None:
 	hooks.posted.connect(assistant.on_hook)
 	hooks.asked.connect(assistant.on_permission_asked)
 	ALARMS.rang.connect(assistant.on_alarm)
+	CHILDREN.finished.connect(assistant.on_child_finished)
 	tools.called.connect(assistant.on_tool_call)
 	assistant.send.connect(session.send)
 	assistant.idle.connect(session.compact)

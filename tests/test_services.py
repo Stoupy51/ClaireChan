@@ -13,7 +13,7 @@ from stouputils.typing import JsonDict
 
 from clairechan import i18n
 from clairechan.actions import find, route
-from clairechan.services import agents, claude, minecraft, programs, weather
+from clairechan.services import agents, children, claude, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
 
 
@@ -173,4 +173,20 @@ def test_an_agent_that_stops_is_logged_and_summed_by_model(tmp_path: Path, monke
 	agents.log_usage(str(session), "a1")
 
 	assert str(agents.usage_today()) == "Agents, last day\n4M read, largest context 2000k\nsonnet: 1 agents, 2 turns (10k written)"
+
+
+def test_a_child_session_is_reported_finished_once_idle_after_working(monkeypatch: pytest.MonkeyPatch) -> None:
+	statuses = iter(["busy", "busy", "idle"])
+	monkeypatch.setattr(children, "POLL_S", 0)
+	monkeypatch.setattr(children, "states", lambda: {"ab12": next(statuses)})
+	done: list[tuple[str, str]] = []
+
+	def record(name: str, child_id: str) -> None:
+		done.append((name, child_id))
+
+	children.CHILDREN.finished.connect(record)
+
+	children.CHILDREN.watch("ab12", "Reticle")
+
+	assert done == [("Reticle", "ab12")]
 
