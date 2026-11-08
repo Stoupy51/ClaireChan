@@ -123,6 +123,8 @@ class Assistant(QObject):
 		self.pending: Future[bool] | None = None
 		self.worked = False
 		""" Whether the turn used a tool, which makes her present the result rather than smile. """
+		self.typed: list[str] = []
+		""" What the app typed and whose turn has not started: other prompts (keyboard, Remote Control) stay off the bubble. """
 		self.restart_pending = False
 		self.activity = ""
 		self.message_id = ""
@@ -316,8 +318,10 @@ class Assistant(QObject):
 		self.activity = ""
 		self.dismiss.stop()
 		self.long_task.start()
-		if not self.pill.isVisible():
-			self.appear("thinking", bubble=prompt)
+		if prompt in self.typed:
+			self.typed.remove(prompt)
+			if not self.pill.isVisible():
+				self.appear("thinking", bubble=prompt)
 
 	def on_tool(self, activity: str) -> None:
 		LOG.info("Action: %s", activity)
@@ -421,7 +425,9 @@ class Assistant(QObject):
 
 	def flush(self) -> None:
 		if self.commands and not self.busy:
-			self.send.emit(self.commands.popleft())
+			command = self.commands.popleft()
+			self.typed.append(command)
+			self.send.emit(command)
 
 	def appear(self, expression: str, bubble: str | Report, *, talking: bool = False) -> None:
 		self.pill.hide()
