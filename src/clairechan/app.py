@@ -123,6 +123,8 @@ class Assistant(QObject):
 		self.pending: Future[bool] | None = None
 		self.worked = False
 		""" Whether the turn used a tool, which makes her present the result rather than smile. """
+		self.own_turn = False
+		""" Whether the running turn started from what the app typed: tool calls of the others stay off the bubble. """
 		self.typed: list[str] = []
 		""" What the app typed and whose turn has not started: other prompts (keyboard, Remote Control) stay off the bubble. """
 		self.restart_pending = False
@@ -318,7 +320,8 @@ class Assistant(QObject):
 		self.activity = ""
 		self.dismiss.stop()
 		self.long_task.start()
-		if prompt in self.typed:
+		self.own_turn = prompt in self.typed
+		if self.own_turn:
 			self.typed.remove(prompt)
 			if not self.pill.isVisible():
 				self.appear("thinking", bubble=prompt)
@@ -326,6 +329,8 @@ class Assistant(QObject):
 	def on_tool(self, activity: str) -> None:
 		LOG.info("Action: %s", activity)
 		self.worked = True
+		if not self.own_turn:
+			return
 		if activity != self.activity and not self.asking and not self.pill.isVisible() and not self.showing_while_agents_run():
 			self.activity = activity
 			self.appear("working", bubble=activity)
