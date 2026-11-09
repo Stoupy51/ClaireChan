@@ -6,10 +6,12 @@ import re
 import subprocess
 import threading
 import time
+from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal
 from stouputils.typing import JsonDict
 
+from clairechan.config import Config
 from clairechan.i18n import tr
 from clairechan.session import NESTED_SESSION_VARS
 
@@ -33,6 +35,7 @@ class Children(QObject):
 
 	def start(self, name: str, brief: str, folder: str) -> str:
 		""" Starts the child in `folder` and has it watched. Never `claude stop` it: that removes it from the user's list. """
+		trust(folder)
 		run = claude("--bg", "-n", name, brief, cwd=folder)
 		if not (started := STARTED.search(run.stdout)):
 			failure = f"{run.stdout} {run.stderr}"
@@ -64,6 +67,20 @@ CHILDREN: Children = Children()
 
 
 # Functions
+def trust(folder: str) -> None:
+	""" Has Claude Code trust `folder` when it sits in the `trusted_folders` setting, as `claude --bg` needs. """
+	path = Path(folder).resolve()
+	if not any(path.is_relative_to(root) for root in Config.load().trusted_folders):
+		return
+	file = Path.home() / ".claude.json"
+	settings: JsonDict = json.loads(file.read_text(encoding="utf-8"))
+	project: JsonDict = settings.setdefault("projects", {}).setdefault(path.as_posix(), {})
+	if project.get("hasTrustDialogAccepted"):
+		return
+	project["hasTrustDialogAccepted"] = True
+	file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+
 def claude(*arguments: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
 	env = {name: value for name, value in os.environ.items() if name not in NESTED_SESSION_VARS}
 	return subprocess.run(

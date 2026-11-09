@@ -71,6 +71,8 @@ class Config:
 	""" How loud her voice is, from 0 to 1. """
 	fps: str
 	""" Frame rate of her windows, one of `FPS_CHOICES`. """
+	trusted_folders: tuple[Path, ...]
+	""" Folders where she has Claude Code trust a project before starting a child session in it. """
 
 	@classmethod
 	def load(cls) -> Self:
@@ -102,6 +104,7 @@ class Config:
 			voice_style=values["voice_style"],
 			volume=values["volume"],
 			fps=values["fps"],
+			trusted_folders=tuple(Path(folder) for folder in values["trusted_folders"]),
 		)
 
 

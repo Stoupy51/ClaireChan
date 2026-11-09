@@ -61,6 +61,9 @@ volume = 1.0
 # Frame rate of her windows: "VSync" (the refresh rate of their screen), 10, 20, 24, 30, 48, 60, 75, 90, 120, 180, 240, 360 or 1000. The slider of her tray menu sets it.
 fps = "VSync"
 
+# Folders where she may start child sessions: a project below them that Claude Code does not trust yet gets trusted for her, instead of waiting for you to accept the prompt.
+trusted_folders = []
+
 # Applications whose windows she may use, by the file name of their program: "read" to read them, "act" to also press buttons and fill fields.
 # She asks you the first time she acts in one, then again after 10 min, and every time for a button or field that sends, pays, deletes or logs in.
 # Say "tu peux agir dans Firefox" to let her act for 10 min in a program set to "read". Terminals stay closed to her, whatever this says.
