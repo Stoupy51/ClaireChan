@@ -18,6 +18,8 @@ DEFAULTS: Path = Path(__file__).with_name("config.toml")
 USER_CONFIG: Path = APP_DATA / "config.toml"
 FPS_CHOICES: tuple[str, ...] = ("VSync", "10", "20", "24", "30", "48", "60", "75", "90", "120", "180", "240", "360", "1000")
 """ Frame rates of her windows, from the screen's own refresh rate to 1000 per second, as the tray's slider lists them. """
+ZOOM_CHOICES: tuple[float, ...] = (0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+""" Sizes of her avatar the tray's slider lists. """
 LOG_FILE: Path = APP_DATA / "clairechan.log"
 CRASH_FILE: Path = APP_DATA / "crash.log"
 """ Where a crash in native code writes the stack of each thread, which `LOG_FILE` cannot catch. """

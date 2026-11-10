@@ -61,7 +61,7 @@ class Windows(QObject):
 		self.avatar = avatar_module.Avatar(config.avatar_zoom, config.text_zoom)
 		self.avatar.bubble.typing_speed = config.typing_speed
 		self.pill = avatar_module.Pill(config.avatar_zoom)
-		self.tray = tray_module.Tray(config.volume, config.fps)
+		self.tray = tray_module.Tray(config.volume, config.fps, config.avatar_zoom)
 		self.tray.show()
 		self.full_screen_check = QTimer(self.avatar)
 		self.full_screen_check.setInterval(FULL_SCREEN_CHECK_MS)
@@ -71,6 +71,7 @@ class Windows(QObject):
 	def save_settings(self) -> None:
 		save_setting("volume", f"{self.listener.config.volume:.2f}")
 		save_setting("fps", f'"{self.listener.config.fps}"')
+		save_setting("avatar_zoom", f"{self.listener.config.avatar_zoom}")
 
 	def pass_clicks_through_in_full_screen(self) -> None:
 		""" Lets the clicks reach a full screen game under her, which her translucent windows would catch. """
@@ -83,6 +84,7 @@ class Windows(QObject):
 		self.tray.open_session.connect(self.session.open)
 		self.tray.volume_changed.connect(partial(set_volume, self.voice, self.listener))
 		self.tray.fps_changed.connect(partial(set_fps, self.listener, self.avatar, self.pill))
+		self.tray.zoom_changed.connect(partial(set_zoom, self.listener, self.avatar, self.pill))
 		self.tray.menu.closed.connect(self.save_settings)
 		self.avatar.set_fps(self.listener.config.fps)
 		self.pill.set_fps(self.listener.config.fps)
@@ -112,6 +114,13 @@ def set_fps(listener: Listener, avatar: avatar_module.Avatar, pill: avatar_modul
 	listener.config = replace(listener.config, fps=fps)
 	avatar.set_fps(fps)
 	pill.set_fps(fps)
+
+
+def set_zoom(listener: Listener, avatar: avatar_module.Avatar, pill: avatar_module.Pill, zoom: float) -> None:
+	""" Applies a size picked in the tray to her windows and to the listener's config, so that saving it announces nothing. """
+	listener.config = replace(listener.config, avatar_zoom=zoom)
+	avatar.set_zoom(zoom, listener.config.text_zoom)
+	pill.set_zoom(zoom)
 
 
 def set_volume(voice: Voice, listener: Listener, volume: float) -> None:

@@ -252,7 +252,7 @@ class Studio:
 		self.assistant = Assistant(self.avatar, self.pill, config)
 		self.assistant.send.connect(self.sent.append)
 		self.assistant.speak.connect(self.say)
-		self.tray = tray_module.Tray(config.volume, config.fps)
+		self.tray = tray_module.Tray(config.volume, config.fps, config.avatar_zoom)
 		self.tray.volume_changed.connect(partial(setattr, self, "volume"))
 		self.listener = Listener(config)
 		# Not `woke`: each request is said in one breath with the wake phrase, so its own bubble would replace her "Yes?" at once

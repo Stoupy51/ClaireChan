@@ -9,11 +9,13 @@ from PySide6.QtCore import QRect, QSize, Signal
 from PySide6.QtGui import QCursor, QIcon
 from PySide6.QtWidgets import QSystemTrayIcon
 
-from clairechan.config import APP_DATA, FPS_CHOICES, LOG_FILE, USER_CONFIG
+from clairechan.config import APP_DATA, FPS_CHOICES, LOG_FILE, USER_CONFIG, ZOOM_CHOICES
 from clairechan.overlay.avatar import face
 from clairechan.overlay.menu import Entry, Menu, Slider, Switch
 
 # Constants
+SIZES: tuple[str, ...] = tuple(f"{choice:.0%}" for choice in ZOOM_CHOICES)
+""" The texts of the size slider. """
 RUN_KEY: str = r"Software\Microsoft\Windows\CurrentVersion\Run"
 """ Registry key, under HKEY_CURRENT_USER, of the programs Windows starts at logon. """
 LAUNCHER: Path = Path(sys.prefix) / "Scripts" / "clairechan.exe"
@@ -32,7 +34,10 @@ class Tray(QSystemTrayIcon):
 	fps_changed = Signal(str)
 	""" The frame rate, one of `FPS_CHOICES`, the slider was moved to. """
 
-	def __init__(self, volume: float, fps: str) -> None:
+	zoom_changed = Signal(float)
+	""" The size of her avatar, one of `ZOOM_CHOICES`, the slider was moved to. """
+
+	def __init__(self, volume: float, fps: str, zoom: float) -> None:
 		super().__init__(QIcon(face(64)))
 		self.setToolTip("Claire")
 		self.menu = Menu([
@@ -44,6 +49,7 @@ class Tray(QSystemTrayIcon):
 			[
 				Slider("Volume", "\ue767", volume, self.volume_changed.emit),
 				Slider("Frame rate", "\ue916", FPS_CHOICES.index(fps) / (len(FPS_CHOICES) - 1), self.pick_fps, FPS_CHOICES),
+				Slider("Size", "\ue799", nearest(zoom) / (len(ZOOM_CHOICES) - 1), self.pick_zoom, SIZES),
 			],
 			[
 				Entry("Open the config", "\ue713", lambda: os.startfile(USER_CONFIG)),
@@ -58,6 +64,9 @@ class Tray(QSystemTrayIcon):
 	def pick_fps(self, value: float) -> None:
 		self.fps_changed.emit(FPS_CHOICES[round(value * (len(FPS_CHOICES) - 1))])
 
+	def pick_zoom(self, value: float) -> None:
+		self.zoom_changed.emit(ZOOM_CHOICES[round(value * (len(ZOOM_CHOICES) - 1))])
+
 	def on_activated(self, reason: QSystemTrayIcon.ActivationReason) -> None:
 		""" Opens the menu by the icon on a left or a right click, or by the cursor where the system tells no place for the icon. """
 		if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.Context):
@@ -66,6 +75,11 @@ class Tray(QSystemTrayIcon):
 
 
 # Functions
+def nearest(zoom: float) -> int:
+	""" Index in `ZOOM_CHOICES` of the size closest to `zoom`, which the config may hold between two of them. """
+	return min(range(len(ZOOM_CHOICES)), key=lambda index: abs(ZOOM_CHOICES[index] - zoom))
+
+
 def starts_with_windows() -> bool:
 	with winreg.OpenKey(winreg.HKEY_CURRENT_USER, RUN_KEY) as key:
 		try:
