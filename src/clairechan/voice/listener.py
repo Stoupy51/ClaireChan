@@ -55,8 +55,7 @@ class Listener(QObject):
 
 	def run(self, frames: Iterator[Audio]) -> None:
 		whisper = load_whisper()
-		if not GPU:
-			frames = spot_wake(frames, self.wake)
+		frames = spot_wake(frames, self.on_spotted)
 		self.loaded.set()
 		for speech in utterances(frames, self.config.pause_s):
 			if speech is None:
@@ -113,9 +112,19 @@ class Listener(QObject):
 			self.woke.emit()
 		self.awake_until = time.monotonic() + FOLLOW_UP_S
 
+	def on_spotted(self) -> None:
+		""" Wakes her when the spotter is the gate, and otherwise logs when it would have, to measure it against Whisper. """
+		if self.gated():
+			self.wake()
+		else:
+			LOG.info("Wake phrase spotted")
+
+	def gated(self) -> bool:
+		return not GPU or self.config.wake_gate
+
 	def transcribes(self, speech: Speech) -> bool:
-		""" Whether Whisper hears the sentence: any on the GPU, only the ended ones that start while she listens on the CPU. """
-		if GPU:
+		""" Whether Whisper hears the sentence: any without the gate, only the ended ones that start while she listens with it. """
+		if not self.gated():
 			return True
 		started = time.monotonic() - len(speech.audio) / RATE
 		return speech.ended and (self.asking or bool(self.request) or started < self.awake_until)

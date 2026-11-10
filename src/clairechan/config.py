@@ -36,6 +36,8 @@ CAPTURES: Path = APP_DATA / "captures"
 class Config:
 	language: str | None
 	""" Whisper language code, None to detect it on each sentence. """
+	wake_gate: bool
+	""" Whisper hears only what follows a wake phrase the small model spotted, as it always does without an NVIDIA GPU. """
 	wake: re.Pattern[str]
 	pause_s: float
 	""" Silence after which a spoken request is sent. """
@@ -89,6 +91,7 @@ class Config:
 		values = tomllib.loads(DEFAULTS.read_text(encoding="utf-8")) | tomllib.loads(USER_CONFIG.read_text(encoding="utf-8"))
 		return cls(
 			language=None if values["language"] == "auto" else values["language"],
+			wake_gate=bool(values["wake_gate"]),
 			wake=re.compile(values["wake"], re.IGNORECASE),
 			pause_s=float(values["pause_s"]),
 			done=re.compile(rf"\W*(?:\b(?:{values['done']})|[,.!?;:]\s*(?:{values['done_alone']}))\W*$", re.IGNORECASE),

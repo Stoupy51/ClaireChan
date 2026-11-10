@@ -62,7 +62,9 @@ LONGEST_LINE: int = 600
 """ Letters of a long reply sent to the translator, which keeps two sentences of it anyway. """
 KANA: re.Pattern[str] = re.compile(r"[぀-ヿ]")
 """ Hiragana or katakana, in a line already in Japanese. """
-LATIN: re.Pattern[str] = re.compile(r"[A-Za-zÀ-ÿ]")
+REASONING: re.Pattern[str] = re.compile(r"<reasoning>.*?</reasoning>", re.DOTALL)
+""" What Haiku thinks in English before some translations, which the engine would spell out letter by letter. """
+LATIN: re.Pattern[str] =re.compile(r"[A-Za-zÀ-ÿ]")
 CODE: re.Pattern[str] = re.compile(r"```.*?```", re.DOTALL)
 SENTENCE: re.Pattern[str] = re.compile(r"[^。\uff01\uff1f!?\s][^。\uff01\uff1f!?]*[。\uff01\uff1f!?]*")
 """ A sentence of a Japanese line, ended by 。 or a full-width or plain ! or ?, synthesized on its own to be said sooner. """
@@ -161,7 +163,7 @@ class Voice(QObject):
 		self.translated += 1
 
 		results = (json.loads(line) for line in self.translator.stdout)
-		japanese = next((event["result"] for event in results if event["type"] == "result"), "")
+		japanese = REASONING.sub("", next((event["result"] for event in results if event["type"] == "result"), "")).strip()
 		if KANA.search(japanese):
 			self.translations[text] = japanese
 		return japanese

@@ -7,8 +7,11 @@ language = "auto"
 
 # Wake phrase, matched ignoring case at the start of each sentence as Whisper spells it ("Hé Claire" can come out as "Et clair").
 # Its first group is the command said in the same breath.
-# Without an NVIDIA GPU, a small model listens for "Hey Claire" before Whisper hears anything, so changing this key does not change what wakes her.
-wake = '^\W*(?:hey|hé|he|eh|et|dis|ok|okay)\W+(?:claire|clair|clare|clerc|clère|clear)\b[\s,.!?]*(.*)'
+# A small model listens for "Hey Claire" before Whisper hears anything when `wake_gate` is true, so this key then no longer decides what wakes her.
+# Without an NVIDIA GPU it always does. With one, Whisper hears everything, and the log notes "Wake phrase spotted" each time the small model
+# would have woken her, to compare with the "Woken" lines before turning the gate on, which frees the GPU from transcribing every sentence.
+wake_gate = false
+wake ='^\W*(?:hey|hé|he|eh|et|dis|ok|okay)\W+(?:claire|clair|clare|clerc|clère|clear)\b[\s,.!?]*(.*)'
 
 # You may pause while you speak: she sends your request after this many seconds of silence,
 # or as soon as you say a `done` phrase, and drops it when you say a `cancel` phrase.

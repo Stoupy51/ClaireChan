@@ -7,8 +7,10 @@ from pathlib import Path
 
 import numpy as np
 import stouputils as stp
+from stouputils.typing import JsonDict
 
-from clairechan.config import ROOT, Config
+from clairechan.claude_code import HOME
+from clairechan.config import Config
 from clairechan.console import enable_colors
 from clairechan.voice.audio import GPU, RATE, load_whisper
 from clairechan.voice.speech import MODEL, RUN, install_engine
@@ -22,9 +24,8 @@ def main() -> None:
 	stp.progress(f"Downloading Whisper ({'1.6' if GPU else '0.5'} GB the first time) and running it once on the {device}...")
 	segments, _ = load_whisper().transcribe(np.zeros(RATE, np.float32), language="en")
 	list(segments)
-	if not GPU:
-		stp.progress("Downloading the wake phrase spotter (18 MB the first time)...")
-		load_spotter()
+	stp.progress("Downloading the wake phrase spotter (18 MB the first time)...")
+	load_spotter()
 	stp.info(f"Whisper runs on the {device}")
 	if Config.load().voice and not (RUN.exists() and MODEL.exists()):
 		stp.progress("Downloading AivisSpeech, her Japanese voice (0.5 GB), which voice = false in the config turns off...")
@@ -38,8 +39,9 @@ def main() -> None:
 		subprocess.run(["claude", "auth", "login"])
 	# The decision stays with the user: Claude Code shows its own dialog, and records the answer in a file it keeps rewriting
 	if not trusted():
-		stp.progress('Claude Code opens and asks whether you trust this folder: pick "Yes, I trust this folder", then type /exit')
-		subprocess.run(["claude"], cwd=ROOT)
+		stp.progress('Claude Code opens in her folder and asks if you trust it: pick "Yes, I trust this folder", then type /exit')
+		HOME.mkdir(parents=True, exist_ok=True)
+		subprocess.run(["claude"], cwd=HOME)
 
 	if signed_in() and trusted():
 		stp.info(f"Claude Code is ready. Start the app with: {stp.CYAN}uv run clairechan")
@@ -54,7 +56,8 @@ def signed_in() -> bool:
 
 
 def trusted() -> bool:
-	""" Whether the user has told Claude Code it may work in this repository. """
-	projects = json.loads((Path.home() / ".claude.json").read_text(encoding="utf-8")).get("projects", {})
-	return bool(projects.get(ROOT.as_posix(), {}).get("hasTrustDialogAccepted"))
+	""" Whether the user has told Claude Code it may work in the folder of the hidden session. """
+	projects: dict[str, JsonDict] = json.loads((Path.home() / ".claude.json").read_text(encoding="utf-8")).get("projects", {})
+	# Claude Code writes the drive letter in either case
+	return any(settings.get("hasTrustDialogAccepted") for key, settings in projects.items() if key.lower() == HOME.as_posix().lower())
 
