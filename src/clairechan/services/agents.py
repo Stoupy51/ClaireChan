@@ -66,7 +66,7 @@ def describe_agent(transcript: Path, now: float) -> str:
 
 
 def log_usage(session_transcript: str, agent_id: str) -> None:
-	""" Appends to `USAGE_LOG` what an agent of a session used so far. Claude Code's own helpers keep no transcript and are skipped. """
+	""" Appends to `USAGE_LOG` what an agent of a session used so far, skipping Claude Code's helpers, which keep no transcript. """
 	transcript = Path(session_transcript).with_suffix("") / "subagents" / f"agent-{agent_id}.jsonl"
 	if not transcript.exists():
 		return
