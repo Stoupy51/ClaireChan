@@ -212,7 +212,6 @@ ACTIONS: list[Action] = [
 		description="Lists the open windows of the applications the user lets you read or act in, by the id read_window takes. "
 		"Needed only to pick a window other than the frontmost one of its program.",
 		run=lambda _: desktop.list_windows(),
-		threaded=True,
 	),
 	Action(
 		name="read_window",

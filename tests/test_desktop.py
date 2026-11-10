@@ -28,8 +28,7 @@ def test_she_asks_before_her_first_action_in_an_app_and_only_reads_one_left_to_r
 	notepad = subprocess.Popen(["notepad.exe"], startupinfo=startup)
 	try:
 		time.sleep(1.5)
-		window = str(next(w.NativeWindowHandle for w in auto.GetRootControl().GetChildren() if w.ProcessId == notepad.pid))
-		assert f"{window}: " in desktop.list_windows()
+		window = next(line.split(":")[0] for line in desktop.list_windows().splitlines() if line.endswith("(notepad.exe, act)"))
 
 		field = edit_number(desktop.read_window(window))
 		assert desktop.permission("mcp__clairechan__fill", {"element": field})

@@ -5,6 +5,7 @@ A change to a module the core has loaded (the session, her ears and her voice, t
 """
 # Imports
 import sys
+from contextlib import suppress
 from pathlib import Path
 
 from clairechan import launcher
@@ -38,7 +39,12 @@ class Changes:
 
 # Functions
 def watched_files() -> dict[Path, bytes]:
-	return {path: path.read_bytes() for path in [*PACKAGE.rglob("*.py"), *ASSETS.rglob("*.png")]}
+	""" The app's code and images, without one the session deletes while they are read. """
+	files: dict[Path, bytes] = {}
+	for path in [*PACKAGE.rglob("*.py"), *ASSETS.rglob("*.png")]:
+		with suppress(FileNotFoundError):
+			files[path] = path.read_bytes()
+	return files
 
 
 def reach_this_process(edited: list[str]) -> bool:

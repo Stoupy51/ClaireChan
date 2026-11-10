@@ -78,6 +78,8 @@ FULL_SCREEN_STATES: frozenset[int] = frozenset({2, 3, 4})
 """ `SHQueryUserNotificationState` values of a full screen application, a Direct3D game or a presentation. """
 PROCESS_QUERY_LIMITED_INFORMATION: int = 0x1000
 WM_SETTEXT: int = 0x000C
+WINDOW_VISITOR = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+""" The callback `EnumWindows` takes. """
 PW_RENDERFULLCONTENT: int = 2
 """ Has `PrintWindow` draw what Chromium and Firefox render with the GPU, which it leaves black otherwise. """
 
@@ -116,10 +118,20 @@ def com[**P, R](function: Callable[P, R]) -> Callable[P, R | str]:
 	return run
 
 
-@com
 def list_windows() -> str:
-	windows = [(window, *access(window.ProcessId)) for window in auto.GetRootControl().GetChildren() if window.Name]
-	lines = [f"{window.NativeWindowHandle}: {window.Name} ({app}, {level})" for window, app, level in windows if level]
+	""" The visible windows the config lets her use, found through Win32: UI Automation waits a minute for a stuck program. """
+	handles: list[int] = []
+
+	def visit(handle: int, _: int) -> bool:
+		handles.append(handle)
+		return True
+
+	windll.user32.EnumWindows(WINDOW_VISITOR(visit), 0)
+	windows = [
+		(handle, title, *access(window_pid(handle)))
+		for handle in handles if auto.IsWindowVisible(handle) and (title := auto.GetWindowText(handle))
+	]
+	lines = [f"{handle}: {title} ({app}, {level})" for handle, title, app, level in windows if level]
 	return "\n".join(lines) or tr(
 		"No window of an application I may use is open.", "Aucune fenêtre d'une application que je peux utiliser n'est ouverte.",
 	)
@@ -317,7 +329,7 @@ def in_front(act: Callable[[], object], done: str) -> str:
 	It waits until they leave keyboard and mouse alone, with nothing full screen, in an application of the config, never a game.
 	"""
 	deadline = time.monotonic() + QUIET_WAIT_S
-	while idle_s() < QUIET_S or full_screen() or not access(foreground_pid())[1]:
+	while idle_s() < QUIET_S or full_screen() or not access(window_pid(windll.user32.GetForegroundWindow()))[1]:
 		if time.monotonic() > deadline:
 			return tr(
 				"Not done, so as not to disturb the user: they kept using the keyboard or mouse, "
@@ -357,9 +369,9 @@ def idle_s() -> float:
 	return (windll.kernel32.GetTickCount() - last.ticks) % 2**32 / 1000
 
 
-def foreground_pid() -> int:
+def window_pid(handle: int) -> int:
 	pid = wintypes.DWORD()
-	windll.user32.GetWindowThreadProcessId(windll.user32.GetForegroundWindow(), ctypes.byref(pid))
+	windll.user32.GetWindowThreadProcessId(handle, ctypes.byref(pid))
 	return pid.value
 
 
