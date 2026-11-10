@@ -1,0 +1,22 @@
+
+name: Checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  checks:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+      - run: uv sync
+      - run: uv run ruff check
+      - run: uv run pyright
+      - run: uv run pytest --doctest-modules src tests
+      - run: uv run stouputils check
+      - run: uvx complexipy src --failed --max-complexity-allowed 15
+

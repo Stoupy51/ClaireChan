@@ -21,7 +21,7 @@ https://github.com/user-attachments/assets/362c7b06-fcf6-4984-8b7d-4766ba969d6c
 - 🖼️ **Overlay and tray menu**: drag her or her pill anywhere, open the links of her bubble, and set her voice and options from her menu.
 - 🖥️ **Actions on the computer**: screenshots, meeting transcripts, timers, weather, programs, other apps' windows and ShadowPlay clips, see [Actions](#-actions).
 - ⛏️ **Minecraft test client**: a Minecraft client of its own, never your game, that the session drives on a server: commands, chat, keys and screenshots.
-- ♻️ **She changes her own code**: ask for a new action and she writes it, reloads it, and puts a change that breaks her aside in git.
+- ♻️ **She changes her own code**: ask for a new action and she writes it, restarts her face on it in 1.5 s without losing the conversation, and puts a change that breaks her aside in git.
 
 ## 📋 Requirements
 
@@ -38,9 +38,9 @@ cd ClaireChan
 uv run clairechan-setup
 ```
 
-The setup installs the dependencies, downloads Whisper (1.6 GB, or 0.5 GB and the wake phrase spotter without an NVIDIA GPU) and runs it once,
+The setup installs the dependencies, downloads Whisper (1.6 GB, or 0.5 GB without an NVIDIA GPU) and runs it once, downloads the wake phrase spotter (18 MB),
 then downloads [AivisSpeech](https://aivis-project.com/), her voice (0.5 GB, unless `voice = false` in the config).
-Then, only when needed, it opens Claude Code's sign-in page, and Claude Code itself in this folder so that you trust it:
+Then, only when needed, it opens Claude Code's sign-in page, and Claude Code itself in her folder, `%APPDATA%\ClaireChan\home`, so that you trust it:
 pick *Yes, I trust this folder*, then type `/exit`. This dialog is Claude Code's safety check before it works in a folder, so the app never answers it for you.
 
 Optional, once:
@@ -54,7 +54,7 @@ Optional, once:
 uv run clairechan
 ```
 
-The app starts in the background with a hidden Claude Code session in this folder, prints the session's link and your plan usage once ready, and keeps running until you quit it from her tray icon.
+The app starts in the background with a hidden Claude Code session in her folder, whose memory stays apart from the sessions you develop with, prints the session's link and your plan usage once ready, and keeps running until you quit it from her tray icon.
 The session stays in claude.ai's list after you quit, and the app resumes it on its next start.
 Say *"Hey Claire, ..."*: she shows up as soon as she hears it, shows the sentence she understood, then what the session does and its answer.
 Her own lines are in French when you speak French, in English otherwise.
@@ -78,7 +78,7 @@ A request that is exactly one of the phrases below is done by the app itself, at
 | Stop the transcription | *"stop the transcription"*, *"arrête la transcription"* | Closes that file |
 | Stop everything | *"stop everything"*, *"arrête tout"* | Kills the running request, its agents and the queued commands, then starts the session again on the same conversation. The app keeps running |
 | Agents progress | *"il en est où ?"*, *"agent progress"* | Tells what each background agent of the session works on: running or finished, its age, its tool calls and the last one |
-| Restart the app | *"restart yourself"*, *"relance-toi"* | Quits and starts the whole app again on the same conversation, for the rare change the automatic reload does not apply |
+| Restart the app | *"restart yourself"*, *"relance-toi"* | Quits and starts the whole app again on the same conversation, for the rare change she cannot apply by herself |
 | Switch model | *"switch to Opus"*, *"passe en Sonnet"* | Types `/model` into the session once its current request is done |
 | Compact the conversation | *"compacte la conversation"* | Types `/compact` into the session once its current request is done |
 | Context of the session | *"show me the context"*, *"le contexte"*, or the tray menu | How full the hidden session's context window is, as `/context` reports it |
@@ -96,9 +96,10 @@ A request that is exactly one of the phrases below is done by the app itself, at
 ### ♻️ Her own code
 
 Ask her to change her own code, such as *"make yourself an action that ..."*: the session edits this folder.
-Once it has nothing running, the app reloads the changed modules in place: her running objects take the new code and keep their state, and a changed sprite rebuilds her windows.
-It restarts on the same conversation only for a change to code still running, such as the microphone's loop, or to what built an object still alive, such as an `__init__` or a signal.
-A change that stops her from loading or starting is put aside in git (stashed, or her commits reverted), and she tells you which.
+The app runs as two processes: her core (the session, her ears and her voice) and her face (her windows, her reactions and her actions).
+Once the session has nothing running, a change to her face, her actions or a sprite starts her face again alone, in 1.5 s, while the session goes on.
+A change to the core starts the whole app again on the same conversation.
+A change that stops her from starting is put aside in git (stashed, or her commits reverted), and she tells you which.
 She leaves her changes for you to review and commit, unless `commit_changes = true` in the config.
 
 ### Without an NVIDIA GPU
@@ -106,6 +107,7 @@ She leaves her changes for you to review and commit, unless `commit_changes = tr
 Whisper's model takes 20 s a sentence on a 6-core CPU, against 0.6 s on a GPU, so the app switches to a lighter setup by itself:
 a small model of [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) listens for *"Hey Claire"* on 2.5 % of one core, and Whisper's `small` model only transcribes what you say after it.
 She then answers about 4 s after you stop speaking instead of 1 s, mishears more words, and wakes on the usual ways to say *"Hey Claire"* in English or French, whatever the `wake` key of the config says.
+With a GPU, `wake_gate = true` in the config gives it the same role, so that Whisper no longer transcribes every sentence the microphone hears.
 
 ## ⚙️ Configuration
 
