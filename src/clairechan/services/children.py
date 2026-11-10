@@ -40,12 +40,18 @@ class Children(QObject):
 		self.tools_url = ""
 		""" Where her tools are served, set at startup so that children can test Minecraft and take screenshots. """
 
-	def start(self, name: str, brief: str, folder: str) -> str:
-		""" Starts the child in `folder` and has it watched. Never `claude stop` it: that removes it from the user's list. """
+	def start(self, name: str, brief: str, folder: str, model: str = "", effort: str = "") -> str:
+		""" Starts the child in `folder` and has it watched. Never `claude stop` it: that removes it from the user's list.
+
+		Args:
+			model:  As `claude --model` takes it, empty for the default one.
+			effort: As `claude --effort` takes it, empty for the default one.
+		"""
 		trust(folder)
+		options = [*(["--model", model] if model else []), *(["--effort", effort] if effort else [])]
 		tools = json.dumps({"mcpServers": {"clairechan": {"type": "http", "url": self.tools_url, "alwaysLoad": True}}})
 		allowed = [f"mcp__clairechan__{tool}" for tool in CHILD_TOOLS]
-		run = claude("--bg", "-n", name, "--mcp-config", tools, "--allowedTools", *allowed, "--", brief, cwd=folder)
+		run = claude("--bg", "-n", name, *options, "--mcp-config", tools, "--allowedTools", *allowed, "--", brief, cwd=folder)
 		if not (started := STARTED.search(run.stdout)):
 			failure = f"{run.stdout} {run.stderr}"
 			return tr(f"The child session did not start: {failure}", f"La session fille n'a pas démarré : {failure}")

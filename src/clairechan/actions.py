@@ -99,11 +99,16 @@ ACTIONS: list[Action] = [
 			"for a long job instead of a subagent. The brief must hold the rules a subagent brief holds and the path of a rapport.md "
 			"the session writes when done. You are told when it has finished. Never stop it with claude stop."
 		),
-		run=lambda arguments: CHILDREN.start(arguments["name"] or "", arguments["brief"] or "", arguments["folder"] or ""),
+		run=lambda arguments: CHILDREN.start(
+			arguments["name"] or "", arguments["brief"] or "", arguments["folder"] or "",
+			arguments.get("model") or "", arguments.get("effort") or "",
+		),
 		parameters={
 			"name": "Short name of the session, shown in the user's list.",
 			"brief": "What the session must do, with the rules and the report path.",
 			"folder": "Project folder the session works in.",
+			"model": "Optional. opus, sonnet, haiku, or a full id such as claude-fable-5-2. The session's default when empty.",
+			"effort": "Optional. low, medium, high, xhigh or max. The session's default when empty.",
 		},
 		threaded=True,
 	),
