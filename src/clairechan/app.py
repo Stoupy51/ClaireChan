@@ -604,6 +604,7 @@ def run() -> None:
 	hooks.asked.connect(assistant.on_permission_asked)
 	ALARMS.rang.connect(assistant.on_alarm)
 	CHILDREN.finished.connect(assistant.on_child_finished)
+	CHILDREN.tools_url = tools.url
 	tools.called.connect(assistant.on_tool_call)
 	assistant.send.connect(session.send)
 	assistant.idle.connect(session.compact)

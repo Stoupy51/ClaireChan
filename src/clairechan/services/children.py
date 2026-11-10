@@ -19,6 +19,11 @@ from clairechan.session import NESTED_SESSION_VARS
 POLL_S: int = 15
 SHORT_JOB_S: int = 60
 """ A child that never shows as working is done once it has been idle this long. """
+CHILD_TOOLS: tuple[str, ...] = (
+	"screenshot", "minecraft_start", "minecraft_state", "minecraft_connect", "minecraft_disconnect", "minecraft_command",
+	"minecraft_chat", "minecraft_hold", "minecraft_look", "minecraft_screenshot", "minecraft_quit",
+)
+""" Her tools a child may use: the screen and the Minecraft test client. """
 STARTED: re.Pattern[str] = re.compile(r"backgrounded\W+(?P<id>[0-9a-f]+)")
 """ The line `claude --bg` prints, such as "backgrounded · c63df584 · Name". """
 
@@ -32,11 +37,15 @@ class Children(QObject):
 		super().__init__()
 		self.waiting: dict[str, str] = {}
 		""" The children not done yet, by id, with their name. """
+		self.tools_url = ""
+		""" Where her tools are served, set at startup so that children can test Minecraft and take screenshots. """
 
 	def start(self, name: str, brief: str, folder: str) -> str:
 		""" Starts the child in `folder` and has it watched. Never `claude stop` it: that removes it from the user's list. """
 		trust(folder)
-		run = claude("--bg", "-n", name, brief, cwd=folder)
+		tools = json.dumps({"mcpServers": {"clairechan": {"type": "http", "url": self.tools_url, "alwaysLoad": True}}})
+		allowed = [f"mcp__clairechan__{tool}" for tool in CHILD_TOOLS]
+		run = claude("--bg", "-n", name, "--mcp-config", tools, "--allowedTools", *allowed, "--", brief, cwd=folder)
 		if not (started := STARTED.search(run.stdout)):
 			failure = f"{run.stdout} {run.stderr}"
 			return tr(f"The child session did not start: {failure}", f"La session fille n'a pas démarré : {failure}")
