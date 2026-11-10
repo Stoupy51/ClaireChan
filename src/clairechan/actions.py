@@ -81,7 +81,7 @@ ACTIONS: list[Action] = [
 		name="restart_app",
 		description="Quits and starts the whole app again on the same conversation, as the automatic reload does for a change it "
 		"cannot apply in place. Only when that reload did not apply a change, or the app is stuck.",
-		phrases=r"(?:redémarre|relance)(?:-toi| (?:l'appli|l'application|claude-?tan))|restart (?:yourself|the app)",
+		phrases=r"(?:redémarre|relance)(?:-toi| (?:l'appli|l'application|claire-?chan))|restart (?:yourself|the app)",
 		run=lambda _: tr("Restarting myself.", "Je me redémarre."),
 	),
 	Action(

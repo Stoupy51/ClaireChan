@@ -26,9 +26,9 @@ class Meeting:
 			return tr(f"I'm already transcribing into {self.path.name}.", f"Je transcris déjà dans {self.path.name}.")
 		folder = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.DocumentsLocation)) / "Transcriptions"
 		folder.mkdir(parents=True, exist_ok=True)
-		self.path = folder / f"Réunion_{datetime.now():%Y-%m-%d_%H-%M}.txt"
+		self.path = folder / f"{tr('Meeting', 'Réunion')}_{datetime.now():%Y-%m-%d_%H-%M}.txt"
 		self.running.set()
-		for speaker, frames in (("Moi", microphone), ("PC", pc_sound)):
+		for speaker, frames in ((tr("Me", "Moi"), microphone), ("PC", pc_sound)):
 			threading.Thread(target=self.transcribe, args=(speaker, frames()), daemon=True).start()
 		return tr(
 			f"Transcribing the PC's sound and your microphone into {self.path}.",
@@ -55,7 +55,7 @@ class Meeting:
 			if not text:
 				continue
 			with self.writing, self.path.open("a", encoding="utf-8") as file:
-				file.write(f"[{datetime.now():%H:%M:%S}] {speaker} : {text}\n")
+				file.write(f"[{datetime.now():%H:%M:%S}] {speaker}{tr(': ', ' : ')}{text}\n")
 
 
 # Constants

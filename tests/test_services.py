@@ -175,10 +175,18 @@ def test_an_agent_that_stops_is_logged_and_summed_by_model(tmp_path: Path, monke
 	assert str(agents.usage_today()) == "Agents, last day\n4M read, largest context 2000k\nsonnet: 1 agents, 2 turns (10k written)"
 
 
-def test_a_child_session_is_reported_finished_once_idle_after_working(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_a_child_session_is_reported_finished_once_idle_after_working_and_its_usage_logged(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
 	statuses = iter(["busy", "busy", "idle"])
 	monkeypatch.setattr(children, "POLL_S", 0)
-	monkeypatch.setattr(children, "states", lambda: {"ab12": next(statuses)})
+	monkeypatch.setattr(children, "sessions", lambda: {"ab12": {"status": next(statuses), "sessionId": "ab12-cd34"}})
+	monkeypatch.setattr(agents, "PROJECTS", tmp_path)
+	monkeypatch.setattr(agents, "USAGE_LOG", tmp_path / "usage.jsonl")
+	usage = {"input_tokens": 10, "cache_read_input_tokens": 1_000_000, "cache_creation_input_tokens": 0, "output_tokens": 3000}
+	reply = {"type": "assistant", "message": {"model": "claude-fable-5-2", "usage": usage}}
+	(tmp_path / "project").mkdir()
+	(tmp_path / "project" / "ab12-cd34.jsonl").write_text(json.dumps(reply), encoding="utf-8")
 	done: list[tuple[str, str]] = []
 
 	def record(name: str, child_id: str) -> None:
@@ -189,4 +197,5 @@ def test_a_child_session_is_reported_finished_once_idle_after_working(monkeypatc
 	children.CHILDREN.watch("ab12", "Reticle")
 
 	assert done == [("Reticle", "ab12")]
+	assert str(agents.usage_today()).endswith("claude-fable-5-2: 1 agents, 1 turns (3k written)")
 

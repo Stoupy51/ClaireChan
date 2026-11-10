@@ -68,13 +68,33 @@ def describe_agent(transcript: Path, now: float) -> str:
 
 
 def log_usage(session_transcript: str, agent_id: str) -> None:
-	""" Appends to `USAGE_LOG` what an agent used so far: its model, tokens, turns and the largest context it read. """
+	""" Appends to `USAGE_LOG` what an agent of a session used so far. Claude Code's own helpers, which keep no transcript, are skipped. """
 	transcript = Path(session_transcript).with_suffix("") / "subagents" / f"agent-{agent_id}.jsonl"
-	usages = [row["message"]["usage"] for row in read_rows(transcript) if row["type"] == "assistant" and "usage" in row["message"]]
+	if not transcript.exists():
+		return
 	meta: JsonDict = json.loads(transcript.with_suffix(".meta.json").read_text(encoding="utf-8"))
+	log_transcript(transcript, agent_id, meta["description"], meta.get("model", ""))
+
+
+def log_child_usage(session_id: str, name: str) -> None:
+	""" Appends to `USAGE_LOG` what a child session used so far, then what each of its own agents did. """
+	for transcript in PROJECTS.glob(f"*/{session_id}.jsonl"):
+		log_transcript(transcript, session_id, name, model="")
+		for agent in (transcript.with_suffix("") / "subagents").glob("agent-*.jsonl"):
+			log_usage(str(transcript), agent.stem.removeprefix("agent-"))
+
+
+def log_transcript(transcript: Path, agent: str, description: str, model: str) -> None:
+	""" Appends to `USAGE_LOG` the tokens, turns and largest context of a transcript.
+
+	Args:
+		model: Empty to take the one that wrote the transcript's last reply.
+	"""
+	replies = [row["message"] for row in read_rows(transcript) if row["type"] == "assistant" and "usage" in row["message"]]
+	usages = [reply["usage"] for reply in replies]
 	line = {
-		"time": datetime.now().isoformat(timespec="seconds"), "agent": agent_id, "description": meta["description"],
-		"model": meta.get("model", ""), "turns": len(usages),
+		"time": datetime.now().isoformat(timespec="seconds"), "agent": agent, "description": description,
+		"model": model or next((reply["model"] for reply in reversed(replies) if "model" in reply), ""), "turns": len(usages),
 		"peak_context": max((sum(usage.get(kind, 0) for kind in CONTEXT_KINDS) for usage in usages), default=0),
 		**{kind: sum(usage.get(kind, 0) for usage in usages) for kind in (*CONTEXT_KINDS, "output_tokens")},
 	}

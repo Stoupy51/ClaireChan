@@ -69,10 +69,11 @@ class Listener(QObject):
 				initial_prompt=SPELLING,
 			)
 			text = " ".join(segment.text.strip() for segment in segments)
+			# Without its text: most of what the microphone hears is not said to her, and the log is kept for weeks
 			LOG.info(
-				"Transcribed %.1f s of %s (%.2f) in %.2f s, %s: %s",
+				"Transcribed %.1f s of %s (%.2f) in %.2f s, %s",
 				len(speech.audio) / RATE, info.language, info.language_probability, time.monotonic() - started,
-				"ended" if speech.ended else "ongoing", text,
+				"ended" if speech.ended else "ongoing",
 			)
 			self.hear(text, info.language, ended=speech.ended)
 
@@ -93,6 +94,7 @@ class Listener(QObject):
 
 		command = match.group(1) if match else text
 		if ended and command and (self.request or time.monotonic() < self.awake_until):
+			LOG.info("Said to her: %s", command)
 			i18n.heard = language
 			for part in SENTENCES.split(command):
 				self.add(part)

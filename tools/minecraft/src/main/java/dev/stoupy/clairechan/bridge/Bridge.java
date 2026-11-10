@@ -80,10 +80,21 @@ public final class Bridge implements ClientModInitializer {
 	/** Runs a route on the client thread and answers with what it returns, or with {"error": ...}. */
 	static void route(HttpServer server, String path, Function<JsonObject, JsonObject> handler) {
 		server.createContext(path, exchange -> {
+			if (!local(exchange)) {
+				exchange.sendResponseHeaders(403, -1);
+				exchange.close();
+				return;
+			}
 			JsonObject body = read(exchange.getRequestBody());
 			CompletableFuture<JsonObject> result = Minecraft.getInstance().submit(() -> handler.apply(body));
 			answer(exchange, result);
 		});
+	}
+
+	/** Whether a request comes from a program of this computer, not a web page (Origin, rebound Host). */
+	static boolean local(HttpExchange exchange) {
+		String host = exchange.getRequestHeaders().getFirst("Host");
+		return exchange.getRequestHeaders().getFirst("Origin") == null && host != null && host.matches("127\\.0\\.0\\.1:\\d+");
 	}
 
 	static JsonObject read(InputStream stream) throws IOException {

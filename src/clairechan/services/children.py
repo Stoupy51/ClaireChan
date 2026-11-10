@@ -13,6 +13,7 @@ from stouputils.typing import JsonDict
 
 from clairechan.config import Config
 from clairechan.i18n import tr
+from clairechan.services import agents
 from clairechan.session import NESTED_SESSION_VARS
 
 # Constants
@@ -66,13 +67,18 @@ class Children(QObject):
 		""" Polls until the child is idle after having worked, or has been idle for `SHORT_JOB_S`, or has left the list. """
 		began = time.time()
 		worked = False
+		session = ""
 		while True:
 			time.sleep(POLL_S)
-			status = states().get(child_id)
+			row = sessions().get(child_id)
+			status = row["status"] if row else None
+			session = row["sessionId"] if row else session
 			worked = worked or status == "busy"
 			if status is None or (status == "idle" and (worked or time.time() - began > SHORT_JOB_S)):
 				break
+
 		self.waiting.pop(child_id, None)
+		agents.log_child_usage(session, name)
 		self.finished.emit(name, child_id)
 
 
@@ -89,11 +95,18 @@ def trust(folder: str) -> None:
 		return
 	file = Path.home() / ".claude.json"
 	settings: JsonDict = json.loads(file.read_text(encoding="utf-8"))
-	project: JsonDict = settings.setdefault("projects", {}).setdefault(path.as_posix(), {})
-	if project.get("hasTrustDialogAccepted"):
+	projects: JsonDict = settings.setdefault("projects", {})
+	# Claude Code writes the drive letter in either case, and reads the key it wrote
+	keys = [key for key in projects if key.lower() == path.as_posix().lower()] or [path.as_posix()]
+	if all(projects.get(key, {}).get("hasTrustDialogAccepted") for key in keys):
 		return
-	project["hasTrustDialogAccepted"] = True
-	file.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+
+	for key in keys:
+		projects.setdefault(key, {})["hasTrustDialogAccepted"] = True
+	# Claude Code rewrites this file too: replacing it in one step never leaves it half written
+	draft = file.with_name(".claude.json.clairechan")
+	draft.write_text(json.dumps(settings, indent=2), encoding="utf-8")
+	draft.replace(file)
 
 
 def claude(*arguments: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
@@ -104,8 +117,8 @@ def claude(*arguments: str, cwd: str | None = None) -> subprocess.CompletedProce
 	)
 
 
-def states() -> dict[str, str]:
-	""" The status of each background session, by id. """
+def sessions() -> dict[str, JsonDict]:
+	""" What `claude agents` tells about each background session, its `status` and `sessionId` among it, by id. """
 	rows: list[JsonDict] = json.loads(claude("agents", "--json").stdout)
-	return {row["id"]: row["status"] for row in rows if row["kind"] == "background"}
+	return {row["id"]: row for row in rows if row["kind"] == "background"}
 

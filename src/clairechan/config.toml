@@ -70,14 +70,10 @@ trusted_folders = []
 # She never presses a key nor moves the mouse. In VS Code, Discord, Edge, or a field of Firefox, an action brings the window to the front,
 # so she waits until you leave keyboard and mouse alone for 3 s in one of these applications, never a game, with nothing full screen,
 # then gives you your window back.
-apps = { "firefox.exe" = "read", "Code.exe" = "act", "Discord.exe" = "read" }
+apps = { "firefox.exe" = "read", "Code.exe" = "read", "Discord.exe" = "read" }
 
 # Your additions to the system prompt of the hidden Claude session, after what the app writes there itself:
 # where ClaireChan is installed and how it started the session. Write them between the two ''' lines, for example:
 # "My projects are located in D:\advanced_desktop, my screenshots in D:\Captures."
 prompt = '''
-When you start a subagent of a better model than yours, pass my request on as it is, without adding constraints, steps or restrictions I did not state: it is more capable than you.
-A subagent resumed with SendMessage keeps its whole history and rereads it on every turn, so start a fresh agent per task, with a short brief, rather than resuming a long one, and give the mechanical tasks to Sonnet. Ask it to read with grep or offset/limit, and to take a single screenshot per feature.
-For a big job, a fresh Opus agent designs a short plan of tasks with verifiable success criteria (a command to run, what storage must hold, validate). A fresh Sonnet agent runs each task and proves its criteria. Tasks touching a storage format, game logic or several linked files are run and reviewed by Opus; interface work and local fixes stay with Sonnet, which goes back to Opus if it fails its criteria. Tasks that overlap run one after the other.
-For a long job, prefer a child session to a subagent, so I can read its conversation in my Code list on claude.ai: run `claude --bg -n "<short name>" "<brief>"` from the project folder. Never run `claude stop` on it, a stopped session leaves my Recents: let it finish by itself. The brief holds the same rules as for a subagent (low priority, no commit, no Claude-Session line, my servers untouched, one test client at a time) and the path of a rapport.md file the session writes when done. Wait for that file with Monitor: a child session sends no end notification and no agent_progress. Remove it with `claude rm <id>` only if I ask.
 '''

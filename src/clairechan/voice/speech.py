@@ -221,7 +221,7 @@ def synthesize(japanese: str, style: int) -> tuple[Vowels, bytes]:
 def is_japanese(text: str) -> bool:
 	""" Whether most of the letters are Japanese, so a reply quoting a Japanese sentence is still translated.
 
-	>>> is_japanese("はじめまして、クロードたんです!"), is_japanese("Elle dit ビルドフォルダを消して dans la démo, et plus encore.")
+	>>> is_japanese("はじめまして、クレアです!"), is_japanese("Elle dit ビルドフォルダを消して dans la démo, et plus encore.")
 	(True, False)
 	"""
 	kana = len(KANA.findall(text))
