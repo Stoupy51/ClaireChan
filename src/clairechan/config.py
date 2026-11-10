@@ -25,6 +25,10 @@ CRASH_FILE: Path = APP_DATA / "crash.log"
 """ Where a crash in native code writes the stack of each thread, which `LOG_FILE` cannot catch. """
 SCREENSHOTS: Path = Path(QStandardPaths.writableLocation(QStandardPaths.StandardLocation.PicturesLocation)) / "Screenshots"
 """ Where her screenshots go, a folder the session reads without asking. """
+FOLLOW_UP_S: float = 8.0
+""" How long a lone wake phrase keeps her listening for the command, and her on screen waiting for it. """
+CAPTURES: Path = APP_DATA / "captures"
+""" Where she draws the windows she looks at, a folder the session reads without asking. """
 
 
 # Classes
@@ -86,7 +90,7 @@ class Config:
 		return cls(
 			language=None if values["language"] == "auto" else values["language"],
 			wake=re.compile(values["wake"], re.IGNORECASE),
-			pause_s=values["pause_s"],
+			pause_s=float(values["pause_s"]),
 			done=re.compile(rf"\W*(?:\b(?:{values['done']})|[,.!?;:]\s*(?:{values['done_alone']}))\W*$", re.IGNORECASE),
 			done_alone=re.compile(rf"\W*(?:{values['done_alone']})\W*", re.IGNORECASE),
 			done_hints=(values["done_alone"].split("|")[0], values["done_alone"].split("|")[-1]),
@@ -99,13 +103,13 @@ class Config:
 			model=values["model"],
 			agent_model=values["agent_model"],
 			commit_changes=values["commit_changes"],
-			avatar_zoom=values["avatar_zoom"],
-			text_zoom=values["text_zoom"],
-			typing_speed=values["typing_speed"],
+			avatar_zoom=float(values["avatar_zoom"]),
+			text_zoom=float(values["text_zoom"]),
+			typing_speed=float(values["typing_speed"]),
 			voice=values["voice"],
-			voice_style=values["voice_style"],
-			volume=values["volume"],
-			fps=values["fps"],
+			voice_style=int(values["voice_style"]),
+			volume=float(values["volume"]),
+			fps=str(values["fps"]),
 			trusted_folders=tuple(Path(folder) for folder in values["trusted_folders"]),
 		)
 

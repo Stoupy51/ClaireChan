@@ -24,7 +24,7 @@ def test_context_size_is_read_from_the_last_reply_until_a_compaction(tmp_path: P
 
 
 def test_a_permission_request_waits_for_the_spoken_answer_and_returns_it(app: QApplication) -> None:
-	server = HookServer()
+	server = HookServer(lambda _tool, _tool_input: None)
 	def answer(verdict: Future[bool]) -> None:
 		verdict.set_result(False)
 	server.asked.connect(answer)

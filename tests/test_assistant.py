@@ -6,16 +6,16 @@ from pathlib import Path
 
 import pytest
 from PySide6.QtWidgets import QApplication
+from stouputils.typing import JsonDict
 
 import clairechan.app as app
 import clairechan.config
 from clairechan.actions import VK_MUTE
-from clairechan.app import FILLERS, Assistant
+from clairechan.assistant import FILLERS, Assistant
 from clairechan.config import DEFAULTS, Config
 from clairechan.i18n import tr
 from clairechan.overlay import avatar as avatar_module
 from clairechan.overlay.avatar import Avatar, Pill
-from clairechan.session import JsonDict
 
 
 # Functions
@@ -72,7 +72,7 @@ def log_nothing(session_transcript: str, agent_id: str) -> None:
 
 
 def test_background_work_keeps_the_pill_until_its_result(assistant: Assistant, monkeypatch: pytest.MonkeyPatch) -> None:
-	monkeypatch.setattr("clairechan.app.log_usage", log_nothing)
+	monkeypatch.setattr("clairechan.assistant.log_usage", log_nothing)
 	assistant.on_hook(hook("UserPromptSubmit", prompt="range le projet"))
 	assistant.on_hook(hook("SubagentStart", agent_id="a1", agent_type="expert"))
 	assistant.on_hook(hook("Stop", last_assistant_message="Je confie ça à l'expert."))

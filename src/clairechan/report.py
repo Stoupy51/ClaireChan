@@ -1,6 +1,7 @@
 """ What an action tells when a bar and colors say it better than a sentence. """
 # Imports
 from dataclasses import dataclass
+from pathlib import Path
 
 from clairechan.i18n import tr
 
@@ -30,4 +31,19 @@ class Report:
 	def __str__(self) -> str:
 		rows = (f"{part.label}{tr(': ', ' : ')}{part.amount} ({part.share})" for part in self.slices)
 		return "\n".join([self.title, *rows])
+
+
+@dataclass(frozen=True)
+class Picture:
+	""" A picture file an action made, which the session is shown along with what she says about it. """
+	said: str
+	path: Path
+
+	def __str__(self) -> str:
+		return self.said
+
+
+# Constants
+type Answer = str | Report | Picture
+""" What an action answers: a sentence, or what shows better as a bar or a picture, each reading as text with `str`. """
 

@@ -1,13 +1,11 @@
 """ What Claude Code reports about the hidden session and the plan, read by running `claude -p` on its own slash commands. """
 # Imports
-import os
 import re
 import subprocess
 
-from clairechan.config import ROOT
+from clairechan.claude_code import HOME, SESSION_ID, environment
 from clairechan.i18n import tr
 from clairechan.report import Report, Slice
-from clairechan.session import NESTED_SESSION_VARS, SESSION_ID
 
 # Constants
 PLAN_USAGE: re.Pattern[str] = re.compile(
@@ -103,9 +101,8 @@ def without_zone(date: str) -> str:
 
 def panel(command: str, *options: str) -> str:
 	""" What `claude` prints for the slash command, which a fresh process answers in about 3 s without a model call. """
-	env = {name: value for name, value in os.environ.items() if name not in NESTED_SESSION_VARS}
 	run = subprocess.run(
-		["claude", "-p", command, "--no-session-persistence", *options], cwd=ROOT, env=env, capture_output=True, text=True,
+		["claude", "-p", command, "--no-session-persistence", *options], cwd=HOME, env=environment(), capture_output=True, text=True,
 		encoding="utf-8", timeout=30, creationflags=subprocess.CREATE_NO_WINDOW,
 	)
 	return run.stdout

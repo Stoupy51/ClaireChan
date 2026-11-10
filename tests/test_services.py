@@ -13,12 +13,15 @@ from stouputils.typing import JsonDict
 
 from clairechan import i18n
 from clairechan.actions import find, route
-from clairechan.services import agents, children, claude, minecraft, programs, weather
+from clairechan.services import agents, alarms, children, claude, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
 
 
 # Functions
-def test_a_timer_set_by_voice_rings_with_what_it_is_for(app: QApplication) -> None:
+def test_a_timer_set_by_voice_rings_with_what_it_is_for_even_after_her_face_started_again(
+	app: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+	monkeypatch.setattr(alarms, "PENDING", tmp_path / "alarms.json")
 	action, arguments = route("Mets un minuteur de 0 secondes.") or (None, {})
 	assert action
 	rang: list[str] = []
@@ -27,6 +30,13 @@ def test_a_timer_set_by_voice_rings_with_what_it_is_for(app: QApplication) -> No
 	while not rang:
 		app.processEvents()
 	assert rang == ["les pâtes"]
+
+	alarms.PENDING.write_text(json.dumps([[0.0, "le four"]]), encoding="utf-8")
+	ALARMS.resume()
+	while len(rang) < 2:
+		app.processEvents()
+	assert rang == ["les pâtes", "le four"]
+	assert json.loads(alarms.PENDING.read_text(encoding="utf-8")) == []
 
 
 def test_the_weather_of_a_city_is_told_in_words(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -180,6 +190,7 @@ def test_a_child_session_is_reported_finished_once_idle_after_working_and_its_us
 ) -> None:
 	statuses = iter(["busy", "busy", "idle"])
 	monkeypatch.setattr(children, "POLL_S", 0)
+	monkeypatch.setattr(children, "WAITING", tmp_path / "children.json")
 	monkeypatch.setattr(children, "sessions", lambda: {"ab12": {"status": next(statuses), "sessionId": "ab12-cd34"}})
 	monkeypatch.setattr(agents, "PROJECTS", tmp_path)
 	monkeypatch.setattr(agents, "USAGE_LOG", tmp_path / "usage.jsonl")

@@ -10,15 +10,13 @@ from urllib.parse import urlparse
 
 from stouputils.typing import JsonDict
 
+from clairechan.claude_code import PROJECTS, SESSION_ID
 from clairechan.config import APP_DATA
 from clairechan.i18n import tr
 from clairechan.report import Report, Slice
 from clairechan.services import desktop
-from clairechan.session import SESSION_ID
 
 # Constants
-PROJECTS: Path = Path.home() / ".claude" / "projects"
-""" Where Claude Code keeps the transcripts of every session, under a folder per project. """
 RECENT_S: int = 6 * 3600
 """ The agents that did nothing for longer than this are left out. """
 ACTIVE_S: int = 180
@@ -68,7 +66,7 @@ def describe_agent(transcript: Path, now: float) -> str:
 
 
 def log_usage(session_transcript: str, agent_id: str) -> None:
-	""" Appends to `USAGE_LOG` what an agent of a session used so far. Claude Code's own helpers, which keep no transcript, are skipped. """
+	""" Appends to `USAGE_LOG` what an agent of a session used so far. Claude Code's own helpers keep no transcript and are skipped. """
 	transcript = Path(session_transcript).with_suffix("") / "subagents" / f"agent-{agent_id}.jsonl"
 	if not transcript.exists():
 		return

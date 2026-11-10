@@ -1,7 +1,6 @@
 """ The child sessions she starts with `claude --bg`, which the user reads in their Code list, and the end of their work. """
 # Imports
 import json
-import os
 import re
 import subprocess
 import threading
@@ -11,20 +10,17 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal
 from stouputils.typing import JsonDict
 
-from clairechan.config import Config
+from clairechan.claude_code import environment
+from clairechan.config import APP_DATA, Config
 from clairechan.i18n import tr
 from clairechan.services import agents
-from clairechan.session import NESTED_SESSION_VARS
 
 # Constants
 POLL_S: int = 15
 SHORT_JOB_S: int = 60
 """ A child that never shows as working is done once it has been idle this long. """
-CHILD_TOOLS: tuple[str, ...] = (
-	"screenshot", "minecraft_start", "minecraft_state", "minecraft_connect", "minecraft_disconnect", "minecraft_command",
-	"minecraft_chat", "minecraft_hold", "minecraft_look", "minecraft_screenshot", "minecraft_quit",
-)
-""" Her tools a child may use: the screen and the Minecraft test client. """
+WAITING: Path = APP_DATA / "children.json"
+""" The name of each child not done yet, by its id, for the face that starts again to keep watching them. """
 STARTED: re.Pattern[str] = re.compile(r"backgrounded\W+(?P<id>[0-9a-f]+)")
 """ The line `claude --bg` prints, such as "backgrounded · c63df584 · Name". """
 
@@ -39,7 +35,7 @@ class Children(QObject):
 		self.waiting: dict[str, str] = {}
 		""" The children not done yet, by id, with their name. """
 		self.tools_url = ""
-		""" Where her tools are served, set at startup so that children can test Minecraft and take screenshots. """
+		""" Where the tools a child may use are served, set at startup. """
 
 	def start(self, name: str, brief: str, folder: str, model: str = "", effort: str = "") -> str:
 		""" Starts the child in `folder` and has it watched. Never `claude stop` it: that removes it from the user's list.
@@ -51,17 +47,26 @@ class Children(QObject):
 		trust(folder)
 		options = [*(["--model", model] if model else []), *(["--effort", effort] if effort else [])]
 		tools = json.dumps({"mcpServers": {"clairechan": {"type": "http", "url": self.tools_url, "alwaysLoad": True}}})
-		allowed = [f"mcp__clairechan__{tool}" for tool in CHILD_TOOLS]
-		run = claude("--bg", "-n", name, *options, "--mcp-config", tools, "--allowedTools", *allowed, "--", brief, cwd=folder)
+		run = claude("--bg", "-n", name, *options, "--mcp-config", tools, "--allowedTools", "mcp__clairechan", "--", brief, cwd=folder)
 		if not (started := STARTED.search(run.stdout)):
 			failure = f"{run.stdout} {run.stderr}"
 			return tr(f"The child session did not start: {failure}", f"La session fille n'a pas démarré : {failure}")
-		self.waiting[started["id"]] = name
-		threading.Thread(target=self.watch, args=(started["id"], name), daemon=True).start()
+		self.follow(started["id"], name)
 		return tr(
 			f"Child session {name} ({started['id']}) started, the user reads it in the Code list. You are told when it has finished.",
 			f"Session fille {name} ({started['id']}) lancée, l'utilisateur la lit dans sa liste Code. Tu seras prévenue à la fin.",
 		)
+
+	def resume(self) -> None:
+		""" Watches again the children a previous run was waiting for. """
+		waiting: dict[str, str] = json.loads(WAITING.read_text(encoding="utf-8")) if WAITING.exists() else {}
+		for child_id, name in waiting.items():
+			self.follow(child_id, name)
+
+	def follow(self, child_id: str, name: str) -> None:
+		self.waiting[child_id] = name
+		WAITING.write_text(json.dumps(self.waiting), encoding="utf-8")
+		threading.Thread(target=self.watch, args=(child_id, name), daemon=True).start()
 
 	def watch(self, child_id: str, name: str) -> None:
 		""" Polls until the child is idle after having worked, or has been idle for `SHORT_JOB_S`, or has left the list. """
@@ -78,13 +83,14 @@ class Children(QObject):
 				break
 
 		self.waiting.pop(child_id, None)
+		WAITING.write_text(json.dumps(self.waiting), encoding="utf-8")
 		agents.log_child_usage(session, name)
 		self.finished.emit(name, child_id)
 
 
 # Constants
 CHILDREN: Children = Children()
-""" The child sessions of this run of the app, kept by a reload as long as this line does not change. """
+""" The child sessions she waits for. """
 
 
 # Functions
@@ -110,9 +116,8 @@ def trust(folder: str) -> None:
 
 
 def claude(*arguments: str, cwd: str | None = None) -> subprocess.CompletedProcess[str]:
-	env = {name: value for name, value in os.environ.items() if name not in NESTED_SESSION_VARS}
 	return subprocess.run(
-		["claude", *arguments], cwd=cwd, env=env, stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
+		["claude", *arguments], cwd=cwd, env=environment(), stdin=subprocess.DEVNULL, capture_output=True, text=True, encoding="utf-8",
 		timeout=60, creationflags=subprocess.CREATE_NO_WINDOW,
 	)
 

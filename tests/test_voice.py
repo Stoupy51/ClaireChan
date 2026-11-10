@@ -7,6 +7,7 @@ import pytest
 
 import clairechan.config
 from clairechan import i18n
+from clairechan.actions import PHRASES
 from clairechan.config import DEFAULTS, Config, save_setting
 from clairechan.i18n import tr
 from clairechan.voice import listener as listener_module
@@ -18,6 +19,7 @@ from clairechan.voice.listener import SPELLING, Listener
 def listener(sent: list[str], monkeypatch: pytest.MonkeyPatch) -> Listener:
 	monkeypatch.setattr(clairechan.config, "USER_CONFIG", DEFAULTS)
 	voice = Listener(Config.load())
+	voice.phrases = PHRASES
 	voice.heard.connect(sent.append)
 	voice.cancelled.connect(lambda: sent.append("<cancelled>"))
 	return voice

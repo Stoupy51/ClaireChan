@@ -4,11 +4,13 @@ import json
 import subprocess
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 from stouputils.typing import JsonDict
 
 from clairechan.config import ROOT
 from clairechan.i18n import tr
+from clairechan.report import Answer, Picture
 
 # Constants
 BRIDGE: str = "http://127.0.0.1:47621"
@@ -27,6 +29,13 @@ def start() -> str:
 		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW,
 	)
 	return tr("The test client is starting.", "Le client de test démarre.")
+
+
+def screenshot() -> Answer:
+	""" What the test client shows, which the bridge saves into a picture file. """
+	answer = call("/screenshot")
+	path = json.loads(answer).get("path") if answer.startswith("{") else None
+	return Picture(said=answer, path=Path(path)) if path else answer
 
 
 def call(route: str, body: JsonDict | None = None) -> str:

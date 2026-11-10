@@ -1,12 +1,13 @@
 """ The hidden Claude Code session: `claude --remote-control` in a pseudo terminal, and the hook events it posts to the app. """
 # Imports
 import json
-import os
 import re
 import subprocess
 import threading
+import time
 import uuid
 import webbrowser
+from collections.abc import Callable
 from concurrent.futures import CancelledError, Future
 from email.message import Message
 from functools import partial
@@ -16,17 +17,18 @@ from typing import Any, override
 
 import pyte
 from PySide6.QtCore import QObject, QTimer, Signal, SignalInstance
+from stouputils.typing import JsonDict
 from winpty import PtyProcess
 
-from clairechan.config import APP_DATA, ROOT, SCREENSHOTS, USER_CONFIG, Config
-from clairechan.services import desktop
+from clairechan.claude_code import HOME, SESSION_ID, environment
+from clairechan.config import APP_DATA, CAPTURES, ROOT, SCREENSHOTS, USER_CONFIG, Config
 
 # Constants
-type JsonDict = dict[str, Any]
 SYSTEM_PROMPT: str = (
 	f"You are Claire, the voice of ClaireChan, a voice assistant app installed in {ROOT} that keeps its settings in {USER_CONFIG}.\n"
 	"ClaireChan started this Claude Code session hidden in a pseudo-terminal, with Remote Control and the auto permission mode, "
 	"resumes it each time the app starts, and follows it through hooks to animate your avatar on the screen.\n"
+	f"The session works in {HOME}, a folder of your own. To change ClaireChan's code, work in {ROOT} and read its CLAUDE.md first.\n"
 	"Prompts come from the user's voice, transcribed by Whisper, which can mishear words, "
 	"or from the Remote Control on claude.ai or in the Claude app on their iPhone.\n"
 	"Your replies appear in a speech bubble next to your avatar, which scrolls through long ones at reading pace.\n"
@@ -57,14 +59,7 @@ RESUME_DIALOG: str = "Resume full session as-is"
 """ Option of the dialog Claude Code shows when it resumes a large session after a long pause. """
 COMPACT_ABOVE_TOKENS: int = 100_000
 """ Context size worth a `/compact`: a fresh session already holds about 50k tokens of system prompt and tools. """
-SESSION_ID: Path = APP_DATA / "session_id"
-""" The conversation the app resumes, saved once a hook reports it, so a session that never got a prompt is not resumed. """
 SESSION_URL: re.Pattern[str] = re.compile(r"https://claude\.ai/code/session_\w+")
-NESTED_SESSION_VARS: tuple[str, ...] = (
-	"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
-	"CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_PID",
-)
-""" Set when the app runs inside another Claude Code session; the hosted `claude` refuses to start nested while they are present. """
 ANSWER_WAIT_S: float = 60.0
 """ How long a permission request waits for the user's spoken answer before the dialog is left to them. """
 PASTE_DELAY_MS: int = 400
@@ -78,7 +73,12 @@ class HookServer(QObject):
 	asked = Signal(Future)
 	""" A permission request waiting for the user's answer: its future gets True to allow it and False to deny it. """
 
-	def __init__(self) -> None:
+	def __init__(self, ask_first: Callable[[str, JsonDict], str | None]) -> None:
+		""" Starts the endpoint.
+
+		Args:
+			ask_first: Why the session must ask the user before a tool call, from its name and input, None when it need not.
+		"""
 		super().__init__()
 		relay, ask = self.posted, self.asked
 
@@ -92,7 +92,7 @@ class HookServer(QObject):
 				match event["hook_event_name"]:
 					case "PermissionRequest":
 						body = wait_for_answer(ask)
-					case "PreToolUse" if reason := desktop.permission(event["tool_name"], event["tool_input"]):
+					case "PreToolUse" if reason := ask_first(event["tool_name"], event["tool_input"]):
 						decision = {"hookEventName": "PreToolUse", "permissionDecision": "ask", "permissionDecisionReason": reason}
 						body = json.dumps({"hookSpecificOutput": decision}).encode()
 					case _:
@@ -112,8 +112,10 @@ class HookServer(QObject):
 
 
 class Session(QObject):
-	""" Claude Code started in the repo, resuming the saved conversation, with its hooks posting to `hooks_url`. """
+	""" Claude Code started in its own folder, resuming the saved conversation, with its hooks posting to `hooks_url`. """
 	compacted = Signal()
+	died = Signal()
+	""" Claude Code stopped by itself, with whatever it was running. """
 
 	def __init__(self, hooks_url: str, tools_url: str, config: Config) -> None:
 		super().__init__()
@@ -123,6 +125,8 @@ class Session(QObject):
 		self.settings.write_text(json.dumps({"hooks": hooks, "inputNeededNotifEnabled": True}), encoding="utf-8")
 		self.id = SESSION_ID.read_text() if SESSION_ID.exists() else ""
 		self.transcript = ""
+		self.busy = False
+		""" Whether a turn or a compaction runs, between the hooks that open and close them. """
 		self.screen_lock = threading.Lock()
 		self.tools_url = tools_url
 		self.url = "https://claude.ai/code"
@@ -134,8 +138,8 @@ class Session(QObject):
 		""" Starts Claude Code with the config's models and prompt, which it reads only then, resuming the conversation if any. """
 		prompt = APP_DATA / "session_prompt.md"
 		prompt.write_text(system_prompt(config.prompt, commit=config.commit_changes), encoding="utf-8")
-		desktop.CAPTURE.parent.mkdir(exist_ok=True)
-		SCREENSHOTS.mkdir(parents=True, exist_ok=True)
+		for folder in (HOME, CAPTURES, SCREENSHOTS):
+			folder.mkdir(parents=True, exist_ok=True)
 		worker = {"description": WORKER_DESCRIPTION, "prompt": WORKER_PROMPT, "model": config.agent_model, "background": True}
 		resume = ["--resume", self.id] if self.id else ["--session-id", str(uuid.uuid4())]
 		# Deferred behind tool search, her tools would show the session their names only, so it would pick the ones it already loaded
@@ -144,12 +148,13 @@ class Session(QObject):
 			"claude", "--remote-control", "ClaireChan", "--permission-mode", "auto", "--model", config.model,
 			"--agents", json.dumps({"worker": worker}), "--mcp-config", tools, "--allowedTools", "mcp__clairechan",
 			"--settings", str(self.settings), "--append-system-prompt-file", str(prompt), *resume,
-			"--add-dir", str(desktop.CAPTURE.parent), str(SCREENSHOTS),
+			"--add-dir", str(ROOT), str(CAPTURES), str(SCREENSHOTS),
 		]
 		# chcp 65001: without it the pseudo console feeds Claude Code accented letters in cp850
 		argv = ["cmd.exe", "/c", "chcp", "65001", ">nul", "&&", *claude]
-		env = {name: value for name, value in os.environ.items() if name not in NESTED_SESSION_VARS}
-		self.pty = PtyProcess.spawn(argv, cwd=str(ROOT), env=env, dimensions=(50, 200))
+		self.alive = True
+		self.started_at = time.monotonic()
+		self.pty = PtyProcess.spawn(argv, cwd=str(HOME), env=environment(), dimensions=(50, 200))
 		self.screen = pyte.Screen(200, 50)
 		""" What the terminal shows, rebuilt from its output: Claude Code only redraws the characters that change. """
 		threading.Thread(target=self.read_output, args=(self.pty, self.screen), daemon=True).start()
@@ -167,7 +172,7 @@ class Session(QObject):
 			try:
 				output = pty.read(4096)
 			except EOFError:
-				return
+				break
 			with self.screen_lock:
 				stream.feed(output)
 			shown = self.text()
@@ -179,6 +184,10 @@ class Session(QObject):
 				self.url = match.group()
 				self.started.set()
 
+		# Neither closed by the app nor replaced by the Claude Code a restart started since
+		if self.alive and pty is self.pty:
+			self.died.emit()
+
 	def text(self) -> str:
 		with self.screen_lock:
 			return "\n".join(self.screen.display)
@@ -188,8 +197,19 @@ class Session(QObject):
 		if event["session_id"] != self.id:
 			self.id = event["session_id"]
 			SESSION_ID.write_text(self.id)
-		if event["hook_event_name"] == "PostCompact":
-			self.compacted.emit()
+		match event["hook_event_name"]:
+			case "UserPromptSubmit":
+				self.busy = True
+			case "Stop" | "StopFailure":
+				self.busy = False
+			# Claude Code compacts on its own during a turn, which stays busy
+			case "PreCompact" if event["trigger"] != "auto":
+				self.busy = True
+			case "PostCompact" if event["trigger"] != "auto":
+				self.busy = False
+				self.compacted.emit()
+			case _:
+				pass
 
 	def compact(self) -> bool:
 		""" Types `/compact` when the conversation is large enough to be worth that request, and says whether it did. """
@@ -207,6 +227,7 @@ class Session(QObject):
 
 	def close(self) -> None:
 		""" Kills Claude Code outright: on a clean exit, Remote Control archives the session, which drops it from claude.ai's list. """
+		self.alive = False
 		kill = ["taskkill", "/F", "/T", "/PID", str(self.pty.pid)]
 		subprocess.run(kill, capture_output=True, creationflags=subprocess.CREATE_NO_WINDOW)
 

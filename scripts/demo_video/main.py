@@ -68,11 +68,12 @@ from spoken import Clip, clips
 from stouputils.typing import JsonDict
 from words import ENGLISH
 
-import clairechan.app
+import clairechan.assistant
 import clairechan.config
 import clairechan.voice.listener
 from clairechan import i18n
-from clairechan.app import Assistant
+from clairechan.actions import PHRASES
+from clairechan.assistant import Assistant
 from clairechan.config import DEFAULTS, ROOT, Config
 from clairechan.overlay import avatar as avatar_module, tray as tray_module
 from clairechan.overlay.avatar import CHIME_RATE, LONG_PRESS_MS, PILL_SIZE, SPRITE_HEIGHT, SPRITE_TOP, Avatar, Pill, bell
@@ -227,8 +228,8 @@ class Studio:
 		self.blinks = [2.0 + sum(blink.uniform(2.5, 6.0) for _ in range(i)) for i in range(60)]
 
 		stack.enter_context(patch.object(clairechan.config, "USER_CONFIG", DEFAULTS))
-		stack.enter_context(patch.object(clairechan.app, "QTimer", ClockTimer))
-		stack.enter_context(patch.object(clairechan.app, "log_usage", skip_usage_log))
+		stack.enter_context(patch.object(clairechan.assistant, "QTimer", ClockTimer))
+		stack.enter_context(patch.object(clairechan.assistant, "log_usage", skip_usage_log))
 		stack.enter_context(patch.object(avatar_module, "chime", self.chime))
 		stack.enter_context(patch.object(clairechan.voice.listener, "time", SimpleNamespace(monotonic=lambda: Clock.seconds)))
 		stack.enter_context(patch.object(Avatar, "now", video_time))
@@ -255,6 +256,7 @@ class Studio:
 		self.tray = tray_module.Tray(config.volume, config.fps, config.avatar_zoom)
 		self.tray.volume_changed.connect(partial(setattr, self, "volume"))
 		self.listener = Listener(config)
+		self.listener.phrases = PHRASES
 		# Not `woke`: each request is said in one breath with the wake phrase, so its own bubble would replace her "Yes?" at once
 		self.listener.dictated.connect(self.assistant.on_dictation)
 		self.listener.heard.connect(self.assistant.on_command)

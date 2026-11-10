@@ -8,8 +8,9 @@ from collections.abc import Iterator
 
 from PySide6.QtCore import QObject, Signal
 
-from clairechan import actions, i18n
-from clairechan.config import Config
+from clairechan import i18n
+from clairechan.config import FOLLOW_UP_S, Config
+from clairechan.phrases import match_phrase
 from clairechan.voice.audio import GPU, RATE, Audio, Speech, load_whisper, utterances
 from clairechan.voice.wake import spot_wake
 
@@ -23,8 +24,6 @@ SPELLING: str = "Hey Claire, question."
 It continues with a word both languages share, so that Whisper does not write the bare wake phrase on noise.
 
 Whisper still writes it back whole on some noise: `hear` ignores that sentence. """
-FOLLOW_UP_S: float = 8.0
-""" How long a lone wake phrase keeps her listening for the command. """
 
 
 # Classes
@@ -51,6 +50,8 @@ class Listener(QObject):
 		""" Set from the Qt thread while a permission request waits: a bare yes or no then answers it. """
 		self.request: list[str] = []
 		""" Sentences of the request being dictated. Both are touched only by the microphone thread. """
+		self.phrases: dict[str, re.Pattern[str]] = {}
+		""" The phrase of each action by its name, given by the process holding the actions: a request that is one is sent at once. """
 
 	def run(self, frames: Iterator[Audio]) -> None:
 		whisper = load_whisper()
@@ -130,7 +131,7 @@ class Listener(QObject):
 		if self.config.cancel_alone.fullmatch(sentence) or self.config.cancel.search(request):
 			self.request = []
 			self.cancelled.emit()
-		elif (routed := actions.route(sentence)) and routed[0].name == "stop_all":
+		elif (action := match_phrase(self.phrases, sentence)) and action[0] == "stop_all":
 			self.request = [sentence]
 			self.send()
 		elif self.config.done_alone.fullmatch(sentence):
@@ -139,7 +140,7 @@ class Listener(QObject):
 		elif self.config.done.search(request):
 			self.request = [self.config.done.sub("", request)]
 			self.send()
-		elif actions.route(request):
+		elif match_phrase(self.phrases, request):
 			self.send()
 		else:
 			self.dictated.emit(request)

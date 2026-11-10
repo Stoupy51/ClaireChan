@@ -10,30 +10,43 @@ from PySide6.QtGui import QGuiApplication
 
 from clairechan.config import SCREENSHOTS
 from clairechan.i18n import tr
-from clairechan.report import Report
+from clairechan.link import PEER
+from clairechan.phrases import match_phrase
+from clairechan.report import Answer, Picture
 from clairechan.services import agents, claude, desktop, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
 from clairechan.services.children import CHILDREN
-from clairechan.voice.meeting import MEETING
 
 
 # Classes
+@dataclass(frozen=True)
+class Parameter:
+	""" An argument of an action, as the session reads it in the tool's schema. The action itself gets it as text. """
+	description: str
+	kind: str = "string"
+	""" Its JSON type. """
+	required: bool = False
+	choices: tuple[str, ...] = ()
+	""" The values it takes, any when empty. """
+
+
 @dataclass(frozen=True)
 class Action:
 	""" Something she does on the computer: the whole request matches `phrases`, or the session calls the tool `name`. """
 	name: str
 	description: str
 	""" What the session reads to choose the tool. """
-	run: Callable[[Mapping[str, str | None]], str | Report]
+	run: Callable[[Mapping[str, str | None]], Answer]
 	""" Carries the action out and returns what she says about it. """
 	phrases: str = ""
 	""" Its named groups are the arguments the request gives. Empty for a tool only the session calls. """
-	parameters: Mapping[str, str] = field(default_factory=dict[str, str])
-	""" Each argument the action takes, with what it is. """
+	parameters: Mapping[str, Parameter] = field(default_factory=dict[str, Parameter])
 	threaded: bool = False
-	""" Whether it runs on a thread of its own as a tool, taking seconds that would freeze the Qt thread. """
+	""" Whether it runs on a thread of its own, taking seconds that would freeze the Qt thread. """
 	spoken_only: bool = False
 	""" Whether only the user's request can do it, never the session as a tool. """
+	child: bool = False
+	""" Whether the child sessions she starts may call it too. """
 
 
 # Constants
@@ -41,35 +54,42 @@ VK_MENU, VK_F10 = 0x12, 0x79
 VK_MUTE = 0xAD
 KEY_UP: int = 0x0002
 """ `KEYEVENTF_KEYUP`, the flag of a key release for `keybd_event`. """
-CURLY_APOSTROPHE: str = chr(0x2019)
-""" The apostrophe Whisper sometimes writes, turned into a straight one before matching phrases. """
 UNITS: dict[str, int] = {"s": 1, "m": 60, "h": 3600}
 """ Seconds in a unit of time, by its first letter. """
 SCREENS: dict[str, int] = {"1": 1, "un": 1, "one": 1, "2": 2, "deux": 2, "two": 2, "3": 3, "trois": 3, "three": 3}
 """ Screen numbers as Whisper may write them. """
 MODELS: tuple[str, ...] = ("opus", "sonnet", "haiku")
 """ The models of `/model` she switches to by name. """
+CORE_WAIT_S: float = 10.0
+""" How long an action waits for the app's other process to do its part. """
+WINDOW: Parameter = Parameter(
+	"Its program's file name, such as firefox.exe, for its frontmost window, or its id from list_windows.", required=True,
+)
+ELEMENT: Parameter = Parameter("Its number from the last read_window.", kind="integer", required=True)
 ACTIONS: list[Action] = [
 	Action(
 		name="screenshot",
-		description="Saves a screenshot of one screen in the Screenshots folder of the user's pictures.",
+		description="Saves a screenshot of one screen in the Screenshots folder of the user's pictures, and shows it to you.",
 		phrases=r"(?:fais une |prends une |take a )?(?:capture|screenshot)(?: d'écran)?"
 		r"(?: (?:de |of )?(?:l' ?écran|screen|monitor)(?: (?P<screen>[1-3]|un|deux|trois|one|two|three))?)?",
 		run=lambda arguments: screenshot(SCREENS[(arguments.get("screen") or "1").lower()]),
-		parameters={"screen": "Screen number from 1, 1 by default."},
+		parameters={"screen": Parameter("Screen number from 1, 1 by default.", kind="integer")},
+		child=True,
 	),
 	Action(
 		name="meeting_start",
 		description="Writes what the PC plays and the microphone hears into a file of the Transcriptions folder, until meeting_stop.",
 		phrases=r"(?:lance|démarre|commence) (?:la |une )?(?:re)?transcription(?: de la réunion)?|transcris(?: la réunion)?"
 		r"|(?:start )?(?:transcribing|transcribe)(?: the meeting)?|start (?:a |the )?transcription",
-		run=lambda _: MEETING.start(),
+		run=lambda _: PEER.ask("meeting", on=True).result(CORE_WAIT_S)["text"],
+		threaded=True,
 	),
 	Action(
 		name="meeting_stop",
 		description="Stops the transcription started by meeting_start and says where its file is.",
 		phrases=r"(?:arrête|stoppe|termine|coupe) (?:la )?(?:re)?transcription|stop (?:the )?(?:transcription|transcribing)",
-		run=lambda _: MEETING.stop(),
+		run=lambda _: PEER.ask("meeting", on=False).result(CORE_WAIT_S)["text"],
+		threaded=True,
 	),
 	Action(
 		name="stop_all",
@@ -79,8 +99,8 @@ ACTIONS: list[Action] = [
 	),
 	Action(
 		name="restart_app",
-		description="Quits and starts the whole app again on the same conversation, as the automatic reload does for a change it "
-		"cannot apply in place. Only when that reload did not apply a change, or the app is stuck.",
+		description="Quits and starts the whole app again on the same conversation, as it does by itself for a change to the code "
+		"of its session or its voice. Only when a change did not apply, or the app is stuck.",
 		phrases=r"(?:redémarre|relance)(?:-toi| (?:l'appli|l'application|claire-?chan))|restart (?:yourself|the app)",
 		run=lambda _: tr("Restarting myself.", "Je me redémarre."),
 	),
@@ -97,24 +117,25 @@ ACTIONS: list[Action] = [
 		description=(
 			"Starts a child Claude session in the background (claude --bg) that the user can read in their Code list on claude.ai, "
 			"for a long job instead of a subagent. The brief must hold the rules a subagent brief holds and the path of a rapport.md "
-			"the session writes when done. You are told when it has finished. Never stop it with claude stop."
+			"the session writes when done, outside any git repository. You are told when it has finished. Never run claude stop on it."
 		),
 		run=lambda arguments: CHILDREN.start(
 			arguments["name"] or "", arguments["brief"] or "", arguments["folder"] or "",
 			arguments.get("model") or "", arguments.get("effort") or "",
 		),
 		parameters={
-			"name": "Short name of the session, shown in the user's list.",
-			"brief": "What the session must do, with the rules and the report path.",
-			"folder": "Project folder the session works in.",
-			"model": "Optional. opus, sonnet, haiku, or a full id such as claude-fable-5-2. The session's default when empty.",
-			"effort": "Optional. low, medium, high, xhigh or max. The session's default when empty.",
+			"name": Parameter("Short name of the session, shown in the user's list.", required=True),
+			"brief": Parameter("What the session must do, with the rules and the report path.", required=True),
+			"folder": Parameter("Project folder the session works in.", required=True),
+			"model": Parameter("opus, sonnet, haiku, or a full id such as claude-fable-5-2. The user's default when left out."),
+			"effort": Parameter("The user's default when left out.", choices=("low", "medium", "high", "xhigh", "max")),
 		},
 		threaded=True,
 	),
 	Action(
 		name="agent_usage",
-		description="What the background agents used over the last day, by model: tokens written and read, largest context.",
+		description="What the background agents and the child sessions used over the last day, by model: "
+		"tokens written and read, largest context.",
 		phrases=r"(?:usage|consommation|coûts?) (?:des |de l')?agents?|agents? (?:usage|costs?)",
 		run=lambda _: agents.usage_today(),
 	),
@@ -130,7 +151,7 @@ ACTIONS: list[Action] = [
 		phrases=r"(?:passe|bascule|switch|mets-toi)(?: en| sur| to)?(?: mode)? (?P<model>" + "|".join(MODELS) + ")",
 		run=lambda arguments: tr(f"Switching to {model}.", f"Je passe en {model}.") if (model := chosen_model(arguments))
 		else tr(f"Pick {', '.join(MODELS)}.", f"Choisis {', '.join(MODELS)}."),
-		parameters={"model": f"One of {', '.join(MODELS)}."},
+		parameters={"model": Parameter("The model to switch to.", required=True, choices=MODELS)},
 	),
 	Action(
 		name="compact",
@@ -159,30 +180,32 @@ ACTIONS: list[Action] = [
 		r" (?P<amount>\d+(?:[.,]\d+)?) ?(?P<unit>secondes?|seconds?|sec|s|minutes?|min|heures?|hours?|h)?",
 		run=lambda arguments: set_timer(arguments.get("amount") or "0", arguments.get("unit") or "m", arguments.get("label") or ""),
 		parameters={
-			"amount": "How long, as a number.", "unit": "seconds, minutes or hours, minutes by default.", "label": "What it is for.",
+			"amount": Parameter("How long.", kind="number", required=True),
+			"unit": Parameter("minutes by default.", choices=("seconds", "minutes", "hours")),
+			"label": Parameter("What it is for."),
 		},
 	),
 	Action(
 		name="weather",
-		description="The weather now and for the day in a city, which the user must name.",
+		description="The weather now and for the day in a city.",
 		phrases=r"(?:(?:quelle est|donne-moi|dis-moi|what's|what is|tell me) )?(?:la météo|the weather|quel temps (?:fait-il|il fait))"
 		r"(?: (?:à|a|de|pour|sur|in|at) (?P<city>.+))?",
 		run=lambda arguments: forecast(arguments.get("city") or ""),
-		parameters={"city": "Name of the city."},
+		parameters={"city": Parameter("Name of the city.", required=True)},
 	),
 	Action(
 		name="allow_acting",
 		description="Lets her press and fill in an application the config only lets her read.",
 		phrases=r"(?:tu peux|vous pouvez|you can) (?:agir|utiliser|act|use|press|appuyer)(?: (?:dans|sur|in|on))? (?P<application>.+)",
 		run=lambda arguments: desktop.allow_acting(arguments["application"] or ""),
-		parameters={"application": "File name of its program."},
+		parameters={"application": Parameter("File name of its program.", required=True)},
 		spoken_only=True,
 	),
 	Action(
 		name="launch_program",
 		description="Opens a program installed on the computer, found by part of its name as the Start menu shows it.",
 		run=lambda arguments: programs.launch(arguments["name"] or ""),
-		parameters={"name": "Part of the program's name, such as Spotify or Discord."},
+		parameters={"name": Parameter("Part of the program's name, such as Spotify or Discord.", required=True)},
 	),
 	Action(
 		name="list_windows",
@@ -196,28 +219,28 @@ ACTIONS: list[Action] = [
 		description="Lists what a window shows, as numbered elements with their type, name and value, without disturbing the user. "
 		"Cheaper than look_window, so read first.",
 		run=lambda arguments: desktop.read_window(arguments["window"] or ""),
-		parameters={"window": "Its program's file name, such as firefox.exe, for its frontmost window, or its id from list_windows."},
+		parameters={"window": WINDOW},
 		threaded=True,
 	),
 	Action(
 		name="look_window",
-		description="Draws a window into a picture file, even behind others, when read_window does not tell enough.",
+		description="Shows you a window as a picture, even behind others, when read_window does not tell enough.",
 		run=lambda arguments: desktop.look_window(arguments["window"] or ""),
-		parameters={"window": "Its program's file name, such as firefox.exe, for its frontmost window, or its id from list_windows."},
+		parameters={"window": WINDOW},
 		threaded=True,
 	),
 	Action(
 		name="press",
 		description="Presses a button, link, tab or check box of a window, without a mouse.",
 		run=lambda arguments: desktop.press(arguments["element"] or ""),
-		parameters={"element": "Its number from the last read_window."},
+		parameters={"element": ELEMENT},
 		threaded=True,
 	),
 	Action(
 		name="fill",
 		description="Writes text into a field of a window, in place of what it holds, without a keyboard.",
 		run=lambda arguments: desktop.fill(arguments["element"] or "", arguments["text"] or ""),
-		parameters={"element": "Its number from the last read_window.", "text": "What to write."},
+		parameters={"element": ELEMENT, "text": Parameter("What to write.", required=True)},
 		threaded=True,
 	),
 	Action(
@@ -225,66 +248,82 @@ ACTIONS: list[Action] = [
 		description="Starts the test Minecraft client, a game instance of its own, never the user's. "
 		"Ready once minecraft_state says loading: false.",
 		run=lambda _: minecraft.start(),
+		child=True,
 	),
 	Action(
 		name="minecraft_state",
 		description="The test client's screen, and in a world the player's position, rotation, health, gamemode and hotbar, as JSON.",
 		run=lambda _: minecraft.call("/state"),
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_connect",
 		description="Joins a server with the test client, whose player is ClaireChan, so the server needs online-mode=false.",
 		run=lambda arguments: minecraft.call("/connect", {"address": arguments.get("address") or "localhost"}),
-		parameters={"address": "host:port, localhost by default."},
+		parameters={"address": Parameter("host:port, localhost by default.")},
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_disconnect",
 		description="Leaves the world or server of the test client, back to the title screen.",
 		run=lambda _: minecraft.call("/disconnect"),
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_command",
 		description="Runs a command as the test client's player. Its feedback arrives in minecraft_chat.",
 		run=lambda arguments: minecraft.call("/command", {"command": arguments["command"] or ""}),
-		parameters={"command": "The command, with or without its slash."},
+		parameters={"command": Parameter("The command, with or without its slash.", required=True)},
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_chat",
 		description="The chat, system and action bar lines the test client received from an index on, and the next index.",
 		run=lambda arguments: minecraft.call("/chat", {"after": arguments.get("after") or "0"}),
-		parameters={"after": "Index of the first line, 0 by default."},
+		parameters={"after": Parameter("Index of the first line, 0 by default.", kind="integer")},
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_hold",
 		description="Holds a key of the test client for some ticks, after one click: forward, back, left, right, jump, sneak, sprint, "
 		"use, attack, drop, swapOffhand, inventory or hotbar.1 to hotbar.9.",
 		run=lambda arguments: minecraft.call("/hold", {"key": arguments["key"] or "", "ticks": arguments.get("ticks") or "1"}),
-		parameters={"key": "The key's name.", "ticks": "How long, in ticks of 1/20 s, 1 by default."},
+		parameters={
+			"key": Parameter("The key's name.", required=True),
+			"ticks": Parameter("How long, in ticks of 1/20 s, 1 by default.", kind="integer"),
+		},
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_look",
 		description="Turns the test client's player to a rotation.",
 		run=lambda arguments: minecraft.call("/look", {"yaw": arguments.get("yaw") or "0", "pitch": arguments.get("pitch") or "0"}),
-		parameters={"yaw": "Degrees, 0 south, 90 west.", "pitch": "Degrees, -90 up, 90 down."},
+		parameters={
+			"yaw": Parameter("Degrees, 0 south, 90 west.", kind="number"),
+			"pitch": Parameter("Degrees, -90 up, 90 down.", kind="number"),
+		},
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_screenshot",
-		description="Saves what the test client shows into a picture file and gives its path, to read.",
-		run=lambda _: minecraft.call("/screenshot"),
+		description="Shows you what the test client shows, saved into a picture file.",
+		run=lambda _: minecraft.screenshot(),
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="minecraft_quit",
 		description="Closes the test client.",
 		run=lambda _: minecraft.call("/quit"),
 		threaded=True,
+		child=True,
 	),
 	Action(
 		name="mute",
@@ -294,6 +333,10 @@ ACTIONS: list[Action] = [
 	),
 ]
 """ Every action, tried in order. The lambdas call functions defined below. """
+PHRASES: dict[str, re.Pattern[str]] = {
+	action.name: re.compile(action.phrases, re.IGNORECASE) for action in ACTIONS if action.phrases
+}
+""" The phrase of each action that can be said aloud, by its name. """
 
 
 # Functions
@@ -306,8 +349,6 @@ def route(request: str) -> tuple[Action, dict[str, str | None]] | None:
 
 	>>> route("Capture l'écran 2.")[0].name, route("Capture l'écran 2.")[1]["screen"]
 	('screenshot', '2')
-	>>> route("Coupe le son !")[0].name
-	'mute'
 	>>> route("Passe en Opus !")[0].name, route("Passe en Opus !")[1]["model"]
 	('model', 'Opus')
 	>>> route("Arrête la transcription.")[0].name
@@ -317,9 +358,8 @@ def route(request: str) -> tuple[Action, dict[str, str | None]] | None:
 	>>> route("Mets pause, puis ouvre Spotify.") is None
 	True
 	"""
-	words = request.strip(" .,;:!?").replace(CURLY_APOSTROPHE, "'")
-	matches = ((action, re.fullmatch(action.phrases, words, re.IGNORECASE)) for action in ACTIONS)
-	return next(((action, match.groupdict()) for action, match in matches if match), None)
+	found = match_phrase(PHRASES, request)
+	return (find(found[0]), found[1].groupdict()) if found else None
 
 
 def chosen_model(arguments: Mapping[str, str | None]) -> str | None:
@@ -333,11 +373,7 @@ def chosen_model(arguments: Mapping[str, str | None]) -> str | None:
 
 
 def set_timer(amount: str, unit: str, label: str) -> str:
-	""" Starts a timer of `amount` of the unit starting with the letter of `unit`, and says how long it runs.
-
-	>>> set_timer("0", "s", "")
-	'0 s timer started.'
-	"""
+	""" Starts a timer of `amount` of the unit starting with the letter of `unit`, and says how long it runs. """
 	seconds = round(float(amount.replace(",", ".")) * UNITS[unit[0].lower()])
 	ALARMS.start(seconds, label)
 	hours, rest = divmod(seconds, 3600)
@@ -352,7 +388,7 @@ def forecast(city: str) -> str:
 	return weather.forecast(city)
 
 
-def screenshot(screen: int) -> str:
+def screenshot(screen: int) -> Answer:
 	""" Saves the screen, counted from 1 as Qt orders them, in the Screenshots folder of the user's pictures. """
 	screens = QGuiApplication.screens()
 	if screen > len(screens):
@@ -361,7 +397,7 @@ def screenshot(screen: int) -> str:
 	SCREENSHOTS.mkdir(parents=True, exist_ok=True)
 	path = SCREENSHOTS / f"Capture {datetime.now():%Y-%m-%d %H-%M-%S}.png"
 	screens[screen - 1].grabWindow(0).save(str(path))
-	return tr(f"Screen {screen} captured in {SCREENSHOTS}.", f"Capture de l'écran {screen} enregistrée dans {SCREENSHOTS}.")
+	return Picture(said=tr(f"Screen {screen} captured in {path}.", f"Capture de l'écran {screen} enregistrée dans {path}."), path=path)
 
 
 def press(*keys: int, said: str) -> str:

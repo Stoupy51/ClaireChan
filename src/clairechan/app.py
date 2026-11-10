@@ -1,46 +1,43 @@
-""" ClaireChan: Claire reacting to what she hears and to the hidden Claude Code session, through its hook events. """
+""" ClaireChan's core: the hidden Claude Code session, her ears and her voice, in the process that lasts as long as the app runs.
+
+Her face (`clairechan.face`: her windows, her reactions and her actions) is a process of its own, which the core starts,
+talks to over a local socket, and starts again alone to apply a change to its code.
+"""
 # Imports
 import faulthandler
+import json
 import logging
 import os
-import random
 import re
 import signal
 import subprocess
 import sys
 import threading
-import tomllib
-from collections import deque
-from collections.abc import Mapping
+import time
 from concurrent.futures import Future
-from dataclasses import fields
 from datetime import datetime
 from functools import partial
 from logging.handlers import RotatingFileHandler
+from pathlib import Path
 
 import stouputils as stp
-from PySide6.QtCore import QFileSystemWatcher, QMessageLogContext, QObject, QPoint, QTimer, QtMsgType, Signal, qInstallMessageHandler
+from PySide6.QtCore import QCoreApplication, QFileSystemWatcher, QObject, QTimer, Signal
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
-from PySide6.QtWidgets import QApplication
+from stouputils.typing import JsonDict
 
-from clairechan import actions
+from clairechan import i18n, launcher
+from clairechan.changes import Changes, reach_this_process
 from clairechan.config import APP_DATA, CRASH_FILE, LOG_FILE, USER_CONFIG, Config
 from clairechan.console import enable_colors
-from clairechan.i18n import tr
 from clairechan.launcher import CHANGED, READY, RESTART, SET_ASIDE
+from clairechan.link import PEER
 from clairechan.mcp import ActionServer
-from clairechan.overlay import avatar as avatar_module, bubble as bubble_module
-from clairechan.reload import Reloader
-from clairechan.report import Report
 from clairechan.services import claude
-from clairechan.services.agents import describe_tool, log_usage
-from clairechan.services.alarms import ALARMS
-from clairechan.services.children import CHILDREN
-from clairechan.session import HookServer, JsonDict, Session
+from clairechan.session import HookServer, Session
 from clairechan.voice.audio import GPU, microphone
-from clairechan.voice.listener import FOLLOW_UP_S, Listener
+from clairechan.voice.listener import Listener
+from clairechan.voice.meeting import MEETING
 from clairechan.voice.speech import Voice, Vowels
-from clairechan.windows import Windows
 
 # Constants
 LOG: logging.Logger = logging.getLogger("clairechan")
@@ -50,20 +47,16 @@ LOG_BACKUPS: int = 20
 """ The log is cut every `LOG_BYTES`, and these many older files are kept besides the current one (about 100 MB, weeks of use). """
 CRASH_MARKER: str = "=== start "
 """ Written to the crash file at each start, so that what follows the last one is what the last run left. """
-WAKE_NOTES: tuple[float, ...] = (880.0, 1318.5)
-DONE_NOTES: tuple[float, ...] = (1046.5, 1318.5, 1568.0)
-LONG_TASK_MS: int = 20_000
-""" How long a turn runs before she shrinks to the pill. """
-HEARD_MS: int = 4000
-SPOKEN_MS: int = 1500
-""" How long she stays once her voice has said a line. """
-""" How long the sentence she understood stays up when the session does not start on it right away. """
-CONFIG_NOTICE_MS: int = 6000
-""" How long she stays up to say what she applied from the saved config. """
 STARTUP_S: float = 60.0
-""" How long the session and Whisper may take to start before the app reports them as failed. """
-COMPACT_IDLE_MS: int = 55 * 60_000
-""" Quiet time after which a large session is compacted, while its prompt cache (1 h on a subscription) still makes that cheap. """
+""" How long the session, Whisper and her face may take to start before the app reports them as failed. """
+FACE_START_S: float = 20.0
+""" How long her face may take to say hello before the change it starts on is put aside, or it is started once more. """
+FACE_SETTLED_S: float = 60.0
+""" A face that ran this long before stopping by itself is not counted with the ones that stopped before it. """
+ASK_FIRST_S: float = 4.0
+""" How long a tool call waits for her face to say whether the user must be asked first, within the 5 s its hook has. """
+SESSION_RETRY_S: float = 60.0
+""" A Claude Code that stops sooner than this after it started is not started again, as it would stop again. """
 COMPACT_TIMEOUT_MS: int = 180_000
 """ How long quitting waits for the session's compaction. """
 RESTART_DELAY_MS: int = 2500
@@ -74,407 +67,190 @@ INSTANCE_NAME: str = "ClaireChan"
 """ Local server of the running app: a new one connects to it to have it quit. """
 PIPES: str = "\\\\.\\pipe\\"
 """ Where Windows lists the named pipes, the local server among them, without connecting to them. """
-SESSION_KEYS: frozenset[str] = frozenset({"agent_model", "prompt", "commit_changes"})
-""" Settings Claude Code reads only when it starts, applied by restarting the session on the same conversation. """
-FILLERS: tuple[tuple[str, str], ...] = (
-	("I'm on it, I'll tell you when it's done.", "Je m'en occupe, je te préviens."),
-	("Here we go, I'm looking into it.", "C'est parti, je regarde ça."),
-	("Okay, I'm running it in the background.", "Ok, je lance ça en arrière-plan."),
-)
-""" What she says when she hands work to an agent: always these lines, so that their translation and sound are kept. """
+SAVED_MS: int = 300
+""" Quiet time after the config file changed before it is read, as editors write it in several steps. """
 
 
 # Classes
-class Assistant(QObject):
-	""" What Claire shows at each step of a request, and when the next command may be typed into the session. """
-	send = Signal(str)
-	""" A command to type, emitted only between turns: keys typed while a dialog is open would answer it. """
-	idle = Signal()
-	""" No hook for `COMPACT_IDLE_MS` and no turn running. """
-	listening_for_answer = Signal()
-	""" A permission request waits for a spoken answer. """
-	answer_settled = Signal()
-	""" The permission request is answered, or no longer waits. """
-	announced = Signal(object)
-	""" Something to tell the user, from a thread that had to wait for it. """
-	restart = Signal()
-	""" The session starts again: `SESSION_KEYS` settings changed while she was free, or she was told to stop everything. """
-	restart_app = Signal()
-	""" She was told to start the whole app again. """
-	free = Signal()
-	""" Nothing runs any more and she has left: the moment to apply a change to the app's code. """
-	speak = Signal(str, int)
-	""" A line to say aloud, with the voice style of the config, emitted only while her voice is on. """
-	hush = Signal()
-	""" She is called while her voice may still be saying something. """
+class Face(QObject):
+	""" Her face, a process started again when it stops by itself or to apply a change to its code. """
+	stopped = Signal(object)
+	""" The process that ended, told by the thread that read its log. """
+	gave_up = Signal()
+	""" Her face keeps stopping, on code that is not a change to put aside. """
 
-	def __init__(self, avatar: avatar_module.Avatar, pill: avatar_module.Pill, config: Config) -> None:
+	def __init__(self) -> None:
 		super().__init__()
-		self.config = config
-		self.avatar = avatar
-		self.avatar.bubble.typing_speed = config.typing_speed
-		self.pill = pill
-		self.commands: deque[str] = deque()
-		self.busy = False
-		self.agents: set[str] = set()
-		self.asking = False
-		self.asked_tool: tuple[str, JsonDict] | None = None
-		""" Name and input of the tool waiting for permission: only its completion answers the request, others run alongside. """
-		self.pending: Future[bool] | None = None
-		self.worked = False
-		""" Whether the turn used a tool, which makes her present the result rather than smile. """
-		self.own_turn = False
-		""" Whether the running turn started from what the app typed: tool calls of the others stay off the bubble. """
-		self.typed: list[str] = []
-		""" What the app typed and whose turn has not started: other prompts (keyboard, Remote Control) stay off the bubble. """
-		self.restart_pending = False
-		self.activity = ""
-		self.message_id = ""
-		self.message = ""
+		self.changes = Changes()
+		self.edited: list[str] = []
+		""" The files of the change her starting face applies, put aside if it does not start. """
+		self.aside = os.environ.get(SET_ASIDE, "")
+		""" The files of a change that broke the app and was put aside, which she tells the user once. """
+		self.stops = 0
+		self.closing = False
+		self.ready = threading.Event()
+		""" Set once a face has said hello. """
+		self.server = QLocalServer(self)
+		self.server.listen(f"{INSTANCE_NAME}-{os.getpid()}")
+		self.server.newConnection.connect(lambda: PEER.attach(self.server.nextPendingConnection()))
+		self.late = QTimer(self, singleShot=True, interval=round(1000 * FACE_START_S))
+		self.late.timeout.connect(self.on_failed)
+		self.stopped.connect(self.on_stopped)
+		self.start()
 
-		self.long_task = QTimer(self)
-		self.long_task.setSingleShot(True)
-		self.long_task.setInterval(LONG_TASK_MS)
-		self.long_task.timeout.connect(self.shrink_unless_showing)
-		self.dismiss = QTimer(self)
-		self.dismiss.setSingleShot(True)
-		self.dismiss.timeout.connect(self.leave)
-		self.idle_timer = QTimer(self)
-		self.idle_timer.setSingleShot(True)
-		self.idle_timer.setInterval(COMPACT_IDLE_MS)
-		self.idle_timer.timeout.connect(self.on_idle)
-
-	def on_wake(self) -> None:
-		self.hush.emit()
-		avatar_module.chime(*WAKE_NOTES)
-		self.appear("hello", bubble=tr("Yes?", "Oui ?"))
-		self.dismiss.start(round(FOLLOW_UP_S * 1000))
-
-	def on_dictation(self, text: str) -> None:
-		english_hint, french_hint = self.config.done_hints
-		self.appear("idle", bubble=tr(f'"{text}" Say "{english_hint}" to send.', f"« {text} » Dis « {french_hint} » pour envoyer."))
-		self.dismiss.stop()
-
-	def on_cancel(self) -> None:
-		LOG.info("Request cancelled")
-		self.appear("idle", bubble=tr("Okay, forget it.", "D'accord, j'oublie."))
-		self.dismiss.start(HEARD_MS)
-
-	def on_config(self, config: Config, changed: list[str]) -> None:
-		LOG.info("Config changed: %s", ", ".join(changed))
-		self.config = config
-		self.avatar.bubble.typing_speed = config.typing_speed
-		if "avatar_zoom" in changed or "text_zoom" in changed:
-			self.avatar.set_zoom(config.avatar_zoom, config.text_zoom)
-			self.pill.set_zoom(config.avatar_zoom)
-
-		if "fps" in changed:
-			self.avatar.set_fps(config.fps)
-			self.pill.set_fps(config.fps)
-
-		if "model" in changed:
-			self.switch_model(config.model)
-		self.restart_pending = self.restart_pending or not SESSION_KEYS.isdisjoint(changed)
-		later = tr(
-			" I'll restart the Claude session to apply it once I have nothing running.",
-			" Je relance la session Claude pour l'appliquer dès que je n'ai plus rien en cours.",
-		) if self.restart_pending else ""
-		names = ", ".join(changed)
-		self.appear("happy", bubble=tr(f"I reread your config: {names}.", f"J'ai relu ta config : {names}.") + later)
-		self.dismiss.start(CONFIG_NOTICE_MS)
-
-	def on_config_error(self, error: str) -> None:
-		LOG.warning("Config not applied: %s", error)
-		self.appear("sad", bubble=tr(
-			f"I can't read your config, I'm keeping the old one: {error}",
-			f"Je n'arrive pas à lire ta config, je garde l'ancienne : {error}",
-		))
-		self.dismiss.start(CONFIG_NOTICE_MS)
-
-	def on_command(self, text: str) -> None:
-		LOG.info("Heard: %s", text)
-		if routed := actions.route(text):
-			action, arguments = routed
-			LOG.info("Local action: %s", action.name)
-			said = self.run_action(action, arguments)
-			self.appear("present", bubble=said)
-			self.dismiss.start(reading_ms(str(said)))
-			return
-
-		later = tr(" I'll get to it right after.", " Je m'en occupe juste après.") if self.busy else ""
-		self.appear("idle", bubble=tr(f'"{text}"', f"« {text} »") + later)
-		self.dismiss.start(HEARD_MS)
-		self.commands.append(text)
-		self.flush()
-
-	def run_action(self, action: actions.Action, arguments: Mapping[str, str | None]) -> str | Report:
-		""" Carries the action out, whoever asked, and returns what it says about it. """
-		text = action.run(arguments)
-		match action.name:
-			case "stop_all":
-				self.stop_all()
-			case "restart_app":
-				self.restart_app.emit()
-			case "model" if model := actions.chosen_model(arguments):
-				self.switch_model(model)
-			case "compact":
-				self.commands.append("/compact")
-				self.flush()
-			case _:
-				pass
-		return text
-
-	def switch_model(self, model: str) -> None:
-		self.commands.append(f"/model {model}")
-		self.flush()
-
-	def announce(self, action: str) -> None:
-		""" Has her tell what the action says, carried out on a thread since the Qt one would freeze while it waits for `claude`. """
-		threading.Thread(target=lambda: self.announced.emit(actions.find(action).run({})), daemon=True).start()
-
-	def on_announce(self, text: str | Report) -> None:
-		self.appear("present", bubble=text)
-		self.dismiss.start(reading_ms(str(text)))
-
-	def on_child_finished(self, name: str, child_id: str) -> None:
-		LOG.info("Child session finished: %s", name)
-		self.commands.append(tr(
-			f"The child session {name} ({child_id}) has finished its turn: read its rapport.md and sum it up for me.",
-			f"La session fille {name} ({child_id}) a fini son tour : lis son rapport.md et résume-le-moi.",
-		))
-		self.flush()
-
-	def on_alarm(self, label: str) -> None:
-		avatar_module.chime(*DONE_NOTES)
-		done = tr(f"Your timer is done: {label}.", f"Ton minuteur est terminé : {label}.")
-		self.appear("present", bubble=done if label else tr("Your timer is done.", "Ton minuteur est terminé."))
-		self.dismiss.start(HEARD_MS)
-
-	def on_tool_call(self, action: actions.Action, arguments: dict[str, str], text: Future[str]) -> None:
-		""" The session called the action as a tool: she does it without interrupting what she shows. """
-		LOG.info("Tool called: %s", action.name)
-		if action.threaded:
-			threading.Thread(target=self.run_threaded, args=(action, arguments, text), daemon=True).start()
-			return
-		text.set_result(str(self.run_action(action, arguments)))
-
-	def run_threaded(self, action: actions.Action, arguments: dict[str, str], text: Future[str]) -> None:
-		try:
-			text.set_result(str(action.run(arguments)))
-		except Exception as error:
-			text.set_exception(error)
-
-	def stop_all(self) -> None:
-		""" Drops the queued commands and what the session runs, its agents included, by starting it again. """
-		self.commands.clear()
-		self.agents.clear()
-		self.end_turn()
-		self.restart_pending = False
-		self.restart.emit()
-
-	def on_hook(self, event: JsonDict) -> None:
-		self.idle_timer.start()
-		match event["hook_event_name"]:
-			case "UserPromptSubmit":
-				self.on_prompt(event["prompt"])
-			case "PreToolUse":
-				self.on_tool(describe_tool(event["tool_name"], event["tool_input"]))
-			case "PostToolUse" if self.asking and (event["tool_name"], event["tool_input"]) == self.asked_tool:
-				self.settle_permission()
-				self.appear("thanks", bubble=tr("Thanks!", "Merci !"))
-			case "PermissionRequest":
-				self.asked_tool = (event["tool_name"], event["tool_input"])
-				self.on_permission(describe_tool(event["tool_name"], event["tool_input"]))
-			case "Notification" if event["notification_type"] == "permission_prompt":
-				self.on_permission(event["message"])
-			case "MessageDisplay":
-				self.on_text(event["message_id"], event["delta"], streaming=not event["final"])
-			case "SubagentStart":
-				if not self.agents:
-					self.say_aloud(tr(*random.choice(FILLERS)))
-				self.agents.add(event["agent_id"])
-				self.shrink_unless_showing()
-			case "SubagentStop":
-				self.agents.discard(event["agent_id"])
-				threading.Thread(target=log_usage, args=(event["transcript_path"], event["agent_id"]), daemon=True).start()
-			case "Stop":
-				self.on_stop(event["last_assistant_message"])
-			case "StopFailure":
-				self.on_failure(event["error"])
-			# Claude Code compacts on its own during a turn, which stays busy
-			case "PreCompact" if event["trigger"] != "auto":
-				self.busy = True
-			case "PostCompact" if event["trigger"] != "auto":
-				self.end_turn()
-				self.flush()
-				self.leave()
-			case _:
-				pass
-
-	def on_prompt(self, prompt: str) -> None:
-		""" A turn starts, typed by the app, sent from the Remote Control, or started by Claude Code itself. """
-		LOG.info("Prompt: %s", prompt)
-		self.settle_permission()
-		self.busy = True
-		self.worked = False
-		self.activity = ""
-		self.dismiss.stop()
-		self.long_task.start()
-		self.own_turn = prompt in self.typed
-		if self.own_turn:
-			self.typed.remove(prompt)
-			if not self.pill.isVisible():
-				self.appear("thinking", bubble=prompt)
-
-	def on_tool(self, activity: str) -> None:
-		LOG.info("Action: %s", activity)
-		self.worked = True
-		if not self.own_turn:
-			return
-		if activity != self.activity and not self.asking and not self.pill.isVisible() and not self.showing_while_agents_run():
-			self.activity = activity
-			self.appear("working", bubble=activity)
-
-	def on_permission(self, request: str) -> None:
-		if self.asking:
-			return
-		LOG.info("Permission asked: %s", request)
-		self.asking = True
-		self.long_task.stop()
-		asked = tr(
-			f"I need your OK: {request}. Say yes or no, or click on me.",
-			f"J'ai besoin de ton accord : {request}. Dis oui ou non, ou clique sur moi.",
+	def start(self) -> None:
+		self.started_at = time.monotonic()
+		self.process = subprocess.Popen(
+			[sys.executable, "-m", "clairechan.face", self.server.serverName()], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+			stderr=subprocess.PIPE, text=True, encoding="utf-8", errors="replace", creationflags=subprocess.CREATE_NO_WINDOW,
 		)
-		self.appear("please", bubble=asked)
-		# The same words each time, so their translation and sound are kept rather than made again
-		self.say_aloud(tr("I need your OK: say yes or no.", "J'ai besoin de ton accord : dis oui ou non."))
+		threading.Thread(target=self.relay_log, args=(self.process,), daemon=True).start()
+		self.late.start()
+
+	def relay_log(self, process: subprocess.Popen[str]) -> None:
+		""" Writes what the face logs, and the errors it prints, in the app's log until it ends. """
+		assert process.stderr
+		for line in process.stderr:
+			LOG.info("Face: %s", line.rstrip())
+		self.stopped.emit(process)
+
+	def apply_changes(self) -> None:
+		""" Starts again what runs the code the session changed, if it did: her face alone, or the whole app. """
+		edited = self.changes.edited()
+		if not edited:
+			return
+		if reach_this_process(edited):
+			LOG.info("Restarting the app for: %s", ", ".join(edited))
+			restart(json.dumps({"files": edited, "since": self.changes.since}))
+			return
+
+		LOG.info("Restarting her face for: %s", ", ".join(edited))
+		self.edited = edited
+		self.replace()
+
+	def replace(self) -> None:
+		old = self.process
+		self.start()
+		old.kill()
+
+	def on_hello(self) -> None:
+		LOG.info("Her face is there, %.1f s after it started", time.monotonic() - self.started_at)
+		self.late.stop()
+		self.ready.set()
+		self.changes.applied()
+		self.edited = []
+		if self.aside:
+			PEER.send("set_aside", reason=self.aside)
+			self.aside = ""
+
+	def on_stopped(self, process: subprocess.Popen[str]) -> None:
+		if process is self.process and not self.closing:
+			self.on_failed()
+
+	def on_failed(self) -> None:
+		""" Her face stopped by itself or did not say hello in time: its change is put aside, or it starts again a few times. """
+		if self.edited:
+			LOG.error("Her face does not start on this change, put aside: %s", ", ".join(self.edited))
+			launcher.set_aside(self.edited, self.changes.since)
+			self.aside = ", ".join(Path(file).name for file in self.edited)
+			self.edited = []
+		else:
+			self.stops = self.stops + 1 if time.monotonic() - self.started_at < FACE_SETTLED_S else 1
+			LOG.error("Her face stopped by itself, %s time in a row", self.stops)
+			if self.stops >= launcher.MAX_CRASHES:
+				self.gave_up.emit()
+				return
+		self.replace()
+
+	def close(self) -> None:
+		self.closing = True
+		self.process.kill()
+
+
+class Core(QObject):
+	""" Carries out what her face asks of the session, her ears and her voice. """
+
+	def __init__(self, face: Face, session: Session, tools: ActionServer, listener: Listener, voice: Voice) -> None:
+		super().__init__()
+		self.face, self.session, self.tools, self.listener, self.voice = face, session, tools, listener, voice
+		self.permissions: dict[int, Future[bool]] = {}
+		""" The permission requests waiting for the user's answer, by the number her face was given. """
+		PEER.received.connect(self.on_message)
+
+	def on_message(self, kind: str, fields: JsonDict) -> None:
+		match kind:
+			case "hello":
+				self.listener.phrases = {name: re.compile(phrase, re.IGNORECASE) for name, phrase in fields["phrases"].items()}
+				# Claude Code reads the tools of a server only when it starts
+				if self.tools.offer(fields["tools"]):
+					self.session.restart(self.listener.config)
+				PEER.send("welcome", tools_url=self.tools.urls["child"])
+				self.face.on_hello()
+			case "type":
+				self.session.send(fields["text"])
+			case "restart_session":
+				self.session.restart(self.listener.config)
+			case "compact":
+				self.session.compact()
+			case "open_session":
+				self.session.open()
+			case "say":
+				self.voice.say(fields["text"], fields["style"])
+			case "hush":
+				self.voice.hush()
+			case "volume":
+				self.voice.volume = fields["value"]
+			case "asking":
+				self.listener.asking = fields["on"]
+			case "cancel":
+				self.listener.cancel()
+			case "verdict":
+				self.on_verdict(fields["request"], fields["allowed"])
+			case "meeting":
+				PEER.reply(fields["ask"], text=MEETING.start() if fields["on"] else MEETING.stop())
+			case "free":
+				self.face.apply_changes()
+			case "quit":
+				shut_down(self.session)
+			case "restart_app":
+				QTimer.singleShot(RESTART_DELAY_MS, partial(restart, FULL_RESTART))
+			case _:
+				LOG.warning("Unknown message from her face: %s", kind)
 
 	def on_permission_asked(self, answer: Future[bool]) -> None:
-		self.pending = answer
-		self.listening_for_answer.emit()
+		number = max(self.permissions, default=0) + 1
+		self.permissions[number] = answer
+		PEER.send("permission", request=number)
 
-	def on_verdict(self, allowed: bool) -> None:
-		""" The user said yes or no to the pending permission request. """
-		LOG.info("Permission answered: %s", "allowed" if allowed else "refused")
-		if not self.pending:
-			return
-		self.pending.set_result(allowed)
-		self.pending = None
-		self.settle_permission()
-		if allowed:
-			self.appear("thanks", bubble=tr("Thanks!", "Merci !"))
+	def on_verdict(self, number: int, allowed: bool | None) -> None:
+		""" Gives the hook that waits the user's answer, or None to leave the dialog to them. """
+		answer = self.permissions.pop(number)
+		if allowed is None:
+			answer.cancel()
 		else:
-			self.appear("idle", bubble=tr("Got it, I'll leave it alone.", "Compris, je n'y touche pas."))
-		self.dismiss.start(HEARD_MS)
+			answer.set_result(allowed)
 
-	def settle_permission(self) -> None:
-		""" Closes a pending permission prompt, allowed or not, and restarts the countdown to the pill. """
-		if self.pending:
-			self.pending.cancel()
-			self.pending = None
-		if self.asking:
-			self.asking = False
-			self.long_task.start()
-			self.answer_settled.emit()
-
-	def on_text(self, message_id: str, delta: str, *, streaming: bool) -> None:
-		self.message = self.message + delta if message_id == self.message_id else delta
-		self.message_id = message_id
-		if not self.pill.isVisible() and not self.showing_while_agents_run():
-			self.appear("idle", bubble=self.message, talking=streaming)
-
-	def on_stop(self, reply: str) -> None:
-		LOG.info("Reply: %s", reply)
-		self.end_turn()
-		if not self.agents:
-			avatar_module.chime(*DONE_NOTES)
-		self.appear("present" if self.worked else "happy", bubble=reply)
-		self.dismiss.start(reading_ms(reply))
-		self.say_aloud(reply)
-		self.flush()
-
-	def on_failure(self, error: str) -> None:
-		LOG.warning("Request failed: %s", error)
-		self.end_turn()
-		self.appear("sad", bubble=tr(f"Oops, the request failed ({error}).", f"Oups, la requête a échoué ({error})."))
-		self.dismiss.start(reading_ms(error))
-		self.flush()
-
-	def on_set_aside(self, reason: str) -> None:
-		""" A change to the app's code broke it, and was put aside in git. """
-		said = tr(
-			f"A change to my code broke me, so I put it aside in git: {reason}",
-			f"Un changement de mon code me cassait, je l'ai mis de côté dans git : {reason}",
-		)
-		self.appear("sad", bubble=said)
-		self.dismiss.start(reading_ms(said))
-		self.say_aloud(said)
-
-	def say_aloud(self, text: str) -> None:
-		if self.config.voice:
-			self.speak.emit(text, self.config.voice_style)
-
-	def on_speaking(self, vowels: Vowels) -> None:
-		""" Keeps her up until her voice has said the line, if she was going to leave before. """
-		if self.dismiss.isActive():
-			self.dismiss.start(max(self.dismiss.remainingTime(), round(1000 * vowels[-1][0]) + SPOKEN_MS))
-
-	def on_read(self) -> None:
-		if self.dismiss.isActive():
-			self.leave()
-
-	def end_turn(self) -> None:
-		self.busy = False
-		self.asking = False
-		self.long_task.stop()
-
-	def flush(self) -> None:
-		if self.commands and not self.busy:
-			command = self.commands.popleft()
-			self.typed.append(command)
-			self.send.emit(command)
-
-	def appear(self, expression: str, bubble: str | Report, *, talking: bool = False) -> None:
-		self.pill.hide()
-		self.avatar.set_expression(expression, talking=talking, bubble=bubble)
-		self.avatar.pop_in()
-
-	def showing_while_agents_run(self) -> bool:
-		""" Whether the bubble holds something she was asked for, which the tool calls and texts of the agents must not replace. """
-		return bool(self.agents) and self.dismiss.isActive()
-
-	def shrink_unless_showing(self) -> None:
-		""" Gives way to the pill, but not while the bubble holds something she was asked for. """
-		if not self.dismiss.isActive():
-			self.shrink()
-
-	def shrink(self) -> None:
-		self.avatar.pop_out()
-		self.pill.show_at(self.avatar.home() + QPoint(self.avatar.width(), self.avatar.height()))
-
-	def leave(self) -> None:
-		""" Out of the way once nothing needs her: the pill while work goes on, hidden otherwise. """
-		if self.busy or self.agents:
-			self.shrink()
+	def on_session_died(self) -> None:
+		if time.monotonic() - self.session.started_at < SESSION_RETRY_S:
+			LOG.error("Claude Code stopped right after it started: it is not started again")
 			return
-		self.pill.hide()
-		self.avatar.pop_out()
-		if self.restart_pending:
-			self.restart_pending = False
-			self.restart.emit()
-		self.free.emit()
+		LOG.warning("Claude Code stopped by itself: starting it again on the same conversation")
+		self.session.start(self.listener.config)
+		PEER.send("session_lost")
 
-	def on_idle(self) -> None:
-		if not self.busy:
-			self.idle.emit()
+	def reload_config(self, watcher: QFileSystemWatcher) -> None:
+		""" Gives her ears and her voice the saved config. Her face tells the user about it, or that it cannot be read. """
+		# Editors save by replacing the file, which drops it from the watch
+		watcher.addPath(str(USER_CONFIG))
+		try:
+			config = Config.load()
+		except Exception:
+			return
+		self.listener.config = config
+		self.voice.volume = config.volume
 
 
 # Functions
-def reading_ms(text: str) -> int:
-	""" How long a text stays up: 4 s, plus 50 ms per character, which the bubble scrolls through at that pace, 60 s at most. """
-	return min(4000 + 50 * len(bubble_module.plain(text)), 60_000)
-
-
 def main() -> None:
 	""" Starts the app in the background and returns once it reports it is ready, so no console window stays open. """
 	enable_colors()
@@ -495,24 +271,33 @@ def main() -> None:
 	stp.error(f"ClaireChan stopped while starting, see {stp.CYAN}{LOG_FILE}")
 
 
-def reload_config(watcher: QFileSystemWatcher, listener: Listener, assistant: Assistant) -> None:
-	""" Applies the saved config: the listener reads its settings on each sentence, and `Assistant.on_config` applies the others. """
-	# Editors save by replacing the file, which drops it from the watch
-	watcher.addPath(str(USER_CONFIG))
+def tell_face(kind: str, value: object = None) -> None:
+	""" Tells her face what her ears heard, with its language, which her own lines follow. """
+	PEER.send(kind, value=value, language=i18n.heard)
+
+
+def tell_hook(event: JsonDict) -> None:
+	PEER.send("hook", event=event)
+
+
+def tell_speaking(vowels: Vowels) -> None:
+	PEER.send("speaking", vowels=vowels)
+
+
+def ask_first(tool: str, tool_input: JsonDict) -> str | None:
+	""" Why the session must ask the user before one of her tools acts, which her face knows, None when it need not. """
+	if not tool.startswith("mcp__clairechan__"):
+		return None
 	try:
-		config = Config.load()
-	except (tomllib.TOMLDecodeError, re.error) as error:
-		assistant.on_config_error(str(error))
+		return PEER.ask("reason", tool=tool, input=tool_input).result(ASK_FIRST_S)["reason"]
+	except TimeoutError:
+		return None
+
+
+def report_ready(session: Session, listener: Listener, face: Face) -> None:
+	""" Tells `main`, through stdout, how the session and Whisper started, once her face is there. """
+	if not face.ready.wait(STARTUP_S):
 		return
-
-	changed = [field.name for field in fields(Config) if getattr(config, field.name) != getattr(listener.config, field.name)]
-	if changed:
-		listener.config = config
-		assistant.on_config(config, changed)
-
-
-def report_ready(session: Session, listener: Listener) -> None:
-	""" Tells `main`, through stdout, how the session and Whisper started. """
 	if session.started.wait(STARTUP_S):
 		stp.info(f"Claude Code session {'resumed' if session.id else 'started'}: {stp.CYAN}{session.url}")
 		stp.info(f"Plan usage: {claude.plan_usage()}")
@@ -526,25 +311,20 @@ def report_ready(session: Session, listener: Listener) -> None:
 	print(READY, end="", flush=True)
 
 
-def restart(app: QApplication, change: str) -> None:
+def restart(change: str) -> None:
 	""" Quits for the launcher to start the app again on its changed code. """
 	print(CHANGED + change, flush=True)
-	app.exit(RESTART)
+	QCoreApplication.exit(RESTART)
 
 
-def shut_down(app: QApplication, windows: Windows, assistant: Assistant, session: Session) -> None:
+def shut_down(session: Session) -> None:
 	""" Quits, after compacting a large session so that the next start does not reread it all once the prompt cache has expired. """
-	windows.tray.hide()
-	if assistant.busy or not session.compact():
-		app.quit()
+	PEER.send("quitting")
+	if session.busy or not session.compact():
+		QCoreApplication.quit()
 		return
-	session.compacted.connect(app.quit)
-	QTimer.singleShot(COMPACT_TIMEOUT_MS, app.quit)
-
-
-def log_qt_message(kind: QtMsgType, _context: QMessageLogContext, message: str) -> None:
-	if kind not in (QtMsgType.QtDebugMsg, QtMsgType.QtInfoMsg):
-		logging.warning("Qt %s: %s", kind.name, message)
+	session.compacted.connect(QCoreApplication.quit)
+	QTimer.singleShot(COMPACT_TIMEOUT_MS, QCoreApplication.quit)
 
 
 def replace_running_app() -> None:
@@ -573,7 +353,6 @@ def run() -> None:
 	LOG.setLevel(logging.INFO)
 	# Without a console the default hooks print tracebacks nowhere
 	sys.excepthook = lambda _kind, exception, _trace: logging.critical("Uncaught error", exc_info=exception)
-	qInstallMessageHandler(log_qt_message)
 	# A crash in native code, which no Python hook sees, dumps the stack of every thread here
 	report_previous_crash()
 	crash_log = CRASH_FILE.open("a", encoding="utf-8")
@@ -584,63 +363,40 @@ def run() -> None:
 	# Qt's event loop never hands control back to Python's KeyboardInterrupt, so let Ctrl+C end the process directly
 	signal.signal(signal.SIGINT, signal.SIG_DFL)
 
-	app = QApplication(sys.argv)
-	app.setQuitOnLastWindowClosed(False)
+	app = QCoreApplication(sys.argv)
 	replace_running_app()
 	instance = QLocalServer()
 	instance.listen(INSTANCE_NAME)
 	config = Config.load()
-	windows = Windows(config)
-	assistant = Assistant(windows.avatar, windows.pill, config)
-	hooks = HookServer()
-	tools = ActionServer()
-	session = Session(hooks.url, tools.url, config)
-	quit_app = partial(shut_down, app, windows, assistant, session)
-	windows.quit_requested.connect(quit_app)
-	assistant.announced.connect(assistant.on_announce)
-	instance.newConnection.connect(quit_app)
-	hooks.posted.connect(session.on_hook)
-	hooks.posted.connect(assistant.on_hook)
-	hooks.asked.connect(assistant.on_permission_asked)
-	ALARMS.rang.connect(assistant.on_alarm)
-	CHILDREN.finished.connect(assistant.on_child_finished)
-	CHILDREN.tools_url = tools.url
-	tools.called.connect(assistant.on_tool_call)
-	assistant.send.connect(session.send)
-	assistant.idle.connect(session.compact)
-	app.aboutToQuit.connect(session.close)
-	reloader = Reloader()
-	# From the event loop, once the slots that made her free have returned, so that their code does not count as running
-	assistant.free.connect(lambda: QTimer.singleShot(0, reloader.apply))
-	reloader.tools_changed.connect(assistant.restart)
-	reloader.broken.connect(assistant.on_set_aside)
-	reloader.restart.connect(partial(restart, app))
-	assistant.restart_app.connect(lambda: QTimer.singleShot(RESTART_DELAY_MS, partial(restart, app, FULL_RESTART)))
+	face = Face()
+	hooks = HookServer(ask_first)
+	tools = ActionServer(PEER)
+	session = Session(hooks.url, tools.urls["main"], config)
 	voice = Voice(config.voice_style if config.voice else None, config.volume)
-	assistant.speak.connect(voice.say)
-	assistant.hush.connect(voice.hush)
-	voice.started.connect(assistant.on_speaking)
-	app.aboutToQuit.connect(voice.close)
 	listener = Listener(config)
-	windows.connect_to(assistant, session, listener, voice)
-	reloader.reloaded.connect(windows.on_reloaded)
-	listener.woke.connect(assistant.on_wake)
-	listener.dictated.connect(assistant.on_dictation)
-	listener.cancelled.connect(assistant.on_cancel)
-	listener.answered.connect(assistant.on_verdict)
-	assistant.listening_for_answer.connect(lambda: setattr(listener, "asking", True))
-	assistant.answer_settled.connect(lambda: setattr(listener, "asking", False))
-	listener.heard.connect(assistant.on_command)
-	assistant.restart.connect(lambda: session.restart(listener.config))
+	core = Core(face, session, tools, listener, voice)
+	instance.newConnection.connect(partial(shut_down, session))
+	face.gave_up.connect(partial(app.exit, 1))
+	hooks.posted.connect(session.on_hook)
+	hooks.posted.connect(tell_hook)
+	hooks.asked.connect(core.on_permission_asked)
+	session.died.connect(core.on_session_died)
+	voice.started.connect(tell_speaking)
+	for heard, kind in (
+		(listener.woke, "woke"), (listener.dictated, "dictated"), (listener.heard, "heard"),
+		(listener.cancelled, "cancelled"), (listener.answered, "answered"),
+	):
+		heard.connect(partial(tell_face, kind))
+	for close in (session.close, voice.close, face.close):
+		app.aboutToQuit.connect(close)
+
 	watcher = QFileSystemWatcher([str(USER_CONFIG)])
-	saved = QTimer(singleShot=True, interval=300)
-	saved.timeout.connect(partial(reload_config, watcher, listener, assistant))
+	saved = QTimer(singleShot=True, interval=SAVED_MS)
+	saved.timeout.connect(partial(core.reload_config, watcher))
 	watcher.fileChanged.connect(lambda: saved.start())
 	threading.Thread(target=listener.run, args=(microphone(),), daemon=True).start()
-	if set_aside := os.environ.get(SET_ASIDE):
-		assistant.on_set_aside(set_aside)
-	# Its waits for the session and Whisper would otherwise freeze her windows and tray icon until they are done
-	threading.Thread(target=report_ready, args=(session, listener), daemon=True).start()
+	# Its waits for the session and Whisper would otherwise freeze the app until they are done
+	threading.Thread(target=report_ready, args=(session, listener, face), daemon=True).start()
 	code = app.exec()
 	LOG.info("Exiting with code %s, threads alive: %s", code, ", ".join(thread.name for thread in threading.enumerate()))
 	logging.shutdown()
@@ -649,7 +405,5 @@ def run() -> None:
 
 
 if __name__ == "__main__":
-	# A reload cannot run `__main__` again, so the app runs from `clairechan.app`, a second copy of this module
-	from clairechan import app
-	app.run()
+	run()
 

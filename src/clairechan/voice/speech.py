@@ -28,7 +28,7 @@ import soundfile as sf
 from PySide6.QtCore import QObject, Signal
 from stouputils.typing import JsonDict
 
-from clairechan.session import NESTED_SESSION_VARS
+from clairechan.claude_code import environment
 
 # Constants
 type Vowels = tuple[tuple[float, str], ...]
@@ -270,14 +270,13 @@ def install_engine() -> None:
 
 def start_translator() -> subprocess.Popen[str]:
 	""" A Haiku conversation that reads lines and answers their translation in stream-json, away from any `CLAUDE.md` or settings. """
-	env = {name: value for name, value in os.environ.items() if name not in NESTED_SESSION_VARS}
 	return subprocess.Popen(
 		[
 			"claude", "-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--model", "haiku",
 			"--effort", "low", "--no-session-persistence", "--tools", "", "--setting-sources", "",
 			"--system-prompt", TRANSLATOR_PROMPT,
 		],
-		cwd=tempfile.gettempdir(), env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+		cwd=tempfile.gettempdir(), env=environment(), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
 		text=True, encoding="utf-8", creationflags=subprocess.CREATE_NO_WINDOW,
 	)
 

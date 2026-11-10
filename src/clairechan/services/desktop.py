@@ -22,8 +22,9 @@ import comtypes.client
 import uiautomation as auto
 from PySide6.QtGui import QImage
 
-from clairechan.config import APP_DATA, Config
+from clairechan.config import CAPTURES, Config
 from clairechan.i18n import tr
+from clairechan.report import Picture
 
 if TYPE_CHECKING:
 	from comtypes.gen.UIAutomationClient import IUIAutomation, IUIAutomationElement
@@ -67,8 +68,8 @@ LISTED_TYPES: frozenset[str] = frozenset({
 MAX_LINES: int = 600
 MAX_TEXT: int = 200
 """ Letters of a name or a value kept in the listing. """
-CAPTURE: Path = APP_DATA / "captures" / "window.png"
-""" Where `look_window` draws a window, in a folder the session may read without asking. """
+CAPTURE: Path = CAPTURES / "window.png"
+""" Where `look_window` draws a window. """
 QUIET_S: float = 3.0
 """ How long the user leaves keyboard and mouse alone before she does something that brings a window to the front. """
 QUIET_WAIT_S: float = 20.0
@@ -102,10 +103,10 @@ class LastInput(ctypes.Structure):
 
 
 # Functions
-def com[**P](function: Callable[P, str]) -> Callable[P, str]:
+def com[**P, R](function: Callable[P, R]) -> Callable[P, R | str]:
 	""" Runs the tool on `COM`, and answers why it did nothing when it is RefusedError or its element is gone. """
 	@functools.wraps(function)
-	def run(*args: P.args, **kwargs: P.kwargs) -> str:
+	def run(*args: P.args, **kwargs: P.kwargs) -> R | str:
 		try:
 			return COM.submit(function, *args, **kwargs).result()
 		except RefusedError as refusal:
@@ -134,15 +135,13 @@ def read_window(window: str) -> str:
 
 
 @com
-def look_window(window: str) -> str:
+def look_window(window: str) -> Picture:
 	control, _app, _level = open_window(window)
 	hwnd = control.NativeWindowHandle
 	if windll.user32.IsIconic(hwnd):
 		raise RefusedError(tr("The window is minimized, so it draws nothing.", "La fenêtre est réduite, elle ne dessine rien."))
 	draw(hwnd)
-	return tr(
-		f"Drawn in {CAPTURE}: read that file to see the window.", f"Dessinée dans {CAPTURE} : lis ce fichier pour voir la fenêtre.",
-	)
+	return Picture(said=tr(f"Drawn in {CAPTURE}.", f"Dessinée dans {CAPTURE}."), path=CAPTURE)
 
 
 @com
