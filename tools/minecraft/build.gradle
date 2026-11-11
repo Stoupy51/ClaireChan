@@ -13,6 +13,8 @@ loom {
 		client {
 			runDir 'run'
 			programArgs '--username', 'ClaireChan'
+			// Stack kept ready under every Java frame: shaderc recurses deeper than the JVM grows a stack from native code, which kills the client on Windows.
+			vmArg '-XX:StackShadowPages=38'
 		}
 		// A second player for tests that need two, such as two game modes at once.
 		client2 {
