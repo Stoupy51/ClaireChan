@@ -11,7 +11,7 @@ PROJECTS: Path = Path.home() / ".claude" / "projects"
 SESSION_ID: Path = APP_DATA / "session_id"
 """ The conversation the app resumes, saved once a hook reports it, so a session that never got a prompt is not resumed. """
 HOME: Path = APP_DATA / "home"
-""" The folder the hidden session works in, whose memory stays apart from the one of the sessions that develop the app. """
+""" The folder the hidden session works in. """
 NESTED_SESSION_VARS: tuple[str, ...] = (
 	"CLAUDECODE", "CLAUDE_CODE_ENTRYPOINT", "CLAUDE_CODE_SESSION_ID", "CLAUDE_CODE_CHILD_SESSION",
 	"CLAUDE_CODE_MESSAGING_SOCKET", "CLAUDE_CODE_MESSAGING_TOKEN", "CLAUDE_PID",

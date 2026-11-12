@@ -54,7 +54,7 @@ Optional, once:
 uv run clairechan
 ```
 
-The app starts in the background with a hidden Claude Code session in her folder, whose memory stays apart from the sessions you develop with, prints the session's link and your plan usage once ready, and keeps running until you quit it from her tray icon.
+The app starts in the background with a hidden Claude Code session in her folder, prints the session's link and your plan usage once ready, and keeps running until you quit it from her tray icon.
 The session stays in claude.ai's list after you quit, and the app resumes it on its next start.
 Say *"Hey Claire, ..."*: she shows up as soon as she hears it, shows the sentence she understood, then what the session does and its answer.
 Her own lines are in French when you speak French, in English otherwise.
