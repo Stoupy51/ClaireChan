@@ -5,6 +5,7 @@ while the session, her ears and her voice go on. What it logs goes to the core, 
 """
 # Imports
 import faulthandler
+import json
 import logging
 import os
 import sys
@@ -140,7 +141,7 @@ def call_tool(assistant: Assistant, call: JsonDict) -> None:
 	""" Runs the action a session called as a tool, and replies with what it answers once it has. """
 	answer: Future[Answer] = Future()
 	answer.add_done_callback(partial(reply_tool, call["ask"]))
-	arguments = {name: str(value) for name, value in call["arguments"].items()}
+	arguments = {name: value if isinstance(value, str) else json.dumps(value) for name, value in call["arguments"].items()}
 	assistant.on_tool_call(actions.find(call["name"]), arguments, answer)
 
 

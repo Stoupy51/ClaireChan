@@ -13,7 +13,7 @@ from clairechan.i18n import tr
 from clairechan.link import PEER
 from clairechan.phrases import match_phrase
 from clairechan.report import Answer, Picture
-from clairechan.services import agents, claude, desktop, minecraft, programs, weather
+from clairechan.services import agents, claude, desktop, dream, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
 from clairechan.services.children import CHILDREN
 
@@ -21,7 +21,7 @@ from clairechan.services.children import CHILDREN
 # Classes
 @dataclass(frozen=True)
 class Parameter:
-	""" An argument of an action, as the session reads it in the tool's schema. The action itself gets it as text. """
+	""" An argument of an action, as the session reads it in the tool's schema. The action gets it as text, JSON for an array. """
 	description: str
 	kind: str = "string"
 	""" Its JSON type. """
@@ -138,6 +138,68 @@ ACTIONS: list[Action] = [
 		"tokens written and read, largest context.",
 		phrases=r"(?:usage|consommation|coûts?) (?:des |de l')?agents?|agents? (?:usage|costs?)",
 		run=lambda _: agents.usage_today(),
+	),
+	Action(
+		name="dream",
+		description="Starts the dream: a child session that reads what every session did since the last dream and proposes changes "
+		r"to the shared memory, numbered in the rapport.md of %APPDATA%\ClaireChan\dream. Only if the user asks.",
+		phrases=r"(?:lance|démarre|commence|start|run) (?:le |un |the |a )?(?:rêve|dream)",
+		run=lambda _: dream.launch(),
+		threaded=True,
+	),
+	Action(
+		name="dream_digest",
+		description="For the dream session only: writes the digest files of what the sessions did since the last dream, and answers "
+		"with their paths, the size of MEMORY.md and the proposals the user refused before.",
+		run=lambda _: dream.digest(),
+		threaded=True,
+		child=True,
+	),
+	Action(
+		name="dream_propose",
+		description="For the dream session only: records one change to the shared memory, as a proposal the user accepts or refuses.",
+		run=lambda arguments: dream.propose(
+			arguments["summary"] or "", arguments["reason"] or "", arguments["sessions"] or "", arguments["files"] or "[]",
+		),
+		parameters={
+			"summary": Parameter("The change in one line, as the user reads it first.", required=True),
+			"reason": Parameter("Why it is worth making, and how often what calls for it was seen.", required=True),
+			"sessions": Parameter("Ids of the sessions that show it, separated by commas.", required=True),
+			"files": Parameter(
+				'One {"path": "memory/name.md", "content": "its whole new text"} per file written, '
+				'one {"path": "memory/name.md"} per file deleted.', kind="array", required=True,
+			),
+		},
+		threaded=True,
+		child=True,
+	),
+	Action(
+		name="dream_review",
+		description="Lists the proposals of the last dream that wait for the user's word, each with its number, reason and diff.",
+		phrases=r"(?:(?:montre(?:-moi)?|affiche|liste|show(?: me)?|list) )?(?:les |the )?"
+		r"(?:propositions(?: du rêve)?|(?:dream )?proposals)",
+		run=lambda _: dream.review(),
+		threaded=True,
+	),
+	Action(
+		name="dream_apply",
+		description="Puts a proposal of the dream into the shared memory, and pushes it. Only when the user accepts that proposal.",
+		phrases=r"(?:applique|accepte|apply|accept) (?:la |the )?(?:proposition|proposal) (?:numéro |number )?(?P<number>\d+)",
+		run=lambda arguments: dream.apply(arguments["number"] or "0"),
+		parameters={"number": Parameter("Its number in dream_review.", kind="integer", required=True)},
+		threaded=True,
+	),
+	Action(
+		name="dream_reject",
+		description="Refuses a proposal of the dream, with a reason the next dream reads. Only when the user refuses that proposal.",
+		phrases=r"(?:refuse|rejette|reject) (?:la |the )?(?:proposition|proposal) (?:numéro |number )?(?P<number>\d+)"
+		r"(?:\W+(?:parce que |parce qu'|car |because )?(?P<reason>.+))?",
+		run=lambda arguments: dream.reject(arguments["number"] or "0", arguments.get("reason") or ""),
+		parameters={
+			"number": Parameter("Its number in dream_review.", kind="integer", required=True),
+			"reason": Parameter("Why the user refuses it, in their words."),
+		},
+		threaded=True,
 	),
 	Action(
 		name="clip",

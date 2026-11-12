@@ -84,6 +84,8 @@ A request that is exactly one of the phrases below is done by the app itself, at
 | Context of the session | *"show me the context"*, *"le contexte"*, or the tray menu | How full the hidden session's context window is, as `/context` reports it |
 | Child session | (tool only) | Starts a `claude --bg` session the user reads in their Code list on claude.ai, and tells the session when it has finished. Never stop it with `claude stop`, which removes it from the list |
 | Agent usage | *"usage des agents"*, *"agent costs"* | What the background agents used over the last day by model: tokens written and read, largest context. Each agent that stops adds a line to `usage.jsonl` next to the config |
+| Dream | *"lance le rêve"*, *"start the dream"* | Starts a child session that reads what every Claude Code session did since the last dream and proposes changes to the shared memory, `~/.claude/memory`, as commits on a branch `dream` of its repository. Its `rapport.md` is in `%APPDATA%\ClaireChan\dream`, a folder to list in `trusted_folders` |
+| Dream proposals | *"montre les propositions"*, *"applique la proposition 2"*, *"refuse la proposition 2, parce que ..."* | Lists the proposals with their diff, carries one into the memory and pushes it, or refuses one with a reason the next dream reads. Nothing reaches the memory without your word |
 | Plan usage | *"my usage"*, *"mon usage"*, or the tray menu | Share of the 5-hour window and of the week used, as `/usage` reports it |
 | Timer | *"set a timer for 10 minutes"*, *"mets un minuteur de 5 min"* | Rings with a chime and a message once the time is up |
 | Weather | *"what's the weather in Lyon"*, *"quel temps fait-il"* | The weather now and for the day, in the city you name |
