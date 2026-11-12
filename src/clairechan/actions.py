@@ -144,7 +144,11 @@ ACTIONS: list[Action] = [
 		description="Starts the dream: a child session that reads what every session did since the last dream and proposes changes "
 		r"to the shared memory, numbered in the rapport.md of %APPDATA%\ClaireChan\dream. Only if the user asks.",
 		phrases=r"(?:lance|démarre|commence|start|run) (?:le |un |the |a )?(?:rêve|dream)",
-		run=lambda _: dream.launch(),
+		run=lambda arguments: dream.launch(arguments.get("model") or "", arguments.get("effort") or ""),
+		parameters={
+			"model": Parameter("opus, sonnet, haiku, or a full id such as claude-fable-5-2. The user's default when left out."),
+			"effort": Parameter("The user's default when left out.", choices=("low", "medium", "high", "xhigh", "max")),
+		},
 		threaded=True,
 	),
 	Action(

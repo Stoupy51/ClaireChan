@@ -98,7 +98,7 @@ class Digest:
 
 
 # Functions
-def launch() -> str:
+def launch(model: str = "", effort: str = "") -> str:
 	""" Starts the dream session, unless proposals of the last one still wait for the user. """
 	if waiting := pending():
 		return tr(
@@ -106,7 +106,7 @@ def launch() -> str:
 			f"{len(waiting)} propositions du dernier rêve t'attendent encore : accepte-les ou refuse-les d'abord.",
 		)
 	HOME.mkdir(parents=True, exist_ok=True)
-	return CHILDREN.start(tr("Dream", "Rêve"), BRIEF, str(HOME))
+	return CHILDREN.start(tr("Dream", "Rêve"), BRIEF, str(HOME), model, effort)
 
 
 def digest() -> str:
