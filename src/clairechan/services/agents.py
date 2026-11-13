@@ -3,14 +3,13 @@
 import json
 import time
 from collections import defaultdict
-from contextlib import suppress
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
 from stouputils.typing import JsonDict
 
-from clairechan.claude_code import PROJECTS, SESSION_ID
+from clairechan.claude_code import SESSION_ID, transcripts
 from clairechan.config import APP_DATA
 from clairechan.i18n import tr
 from clairechan.report import Report, Slice
@@ -26,28 +25,25 @@ HANDBACK: str = "SubagentHandback"
 """ The tool an agent ends with, to hand its report back. """
 USAGE_LOG: Path = APP_DATA / "usage.jsonl"
 """ One line per time an agent stopped, holding what it used since it started: the last line of an agent is its total. """
-CONTEXT_KINDS: tuple[str, ...] = ("input_tokens", "cache_read_input_tokens", "cache_creation_input_tokens")
-""" The usage fields adding up to what the model read on a turn. """
 
 
 # Functions
 def progress() -> str:
 	""" Where the background agents of the session stand: what each is, how long it runs, how many tool calls it made and the last. """
-	folders = PROJECTS.glob(f"*/{SESSION_ID.read_text()}/subagents")
 	now = time.time()
-	transcripts = sorted(
-		(path for folder in folders for path in folder.glob("agent-*.jsonl") if now - path.stat().st_mtime < RECENT_S),
+	recent = sorted(
+		(path for path in transcripts.agents_of(SESSION_ID.read_text()) if now - path.stat().st_mtime < RECENT_S),
 		key=lambda path: path.stat().st_mtime, reverse=True,
 	)[:MAX_AGENTS]
-	if not transcripts:
+	if not recent:
 		return tr("No agent worked on this session lately.", "Aucun agent n'a travaillé récemment sur cette session.")
-	return "\n".join(describe_agent(path, now) for path in transcripts)
+	return "\n".join(describe_agent(path, now) for path in recent)
 
 
 def describe_agent(transcript: Path, now: float) -> str:
 	""" One line about an agent: its task, running or finished, its age, its tool calls and what it did last. """
-	meta: JsonDict = json.loads(transcript.with_suffix(".meta.json").read_text(encoding="utf-8"))
-	rows = read_rows(transcript)
+	meta = transcripts.read_meta(transcript)
+	rows = transcripts.read_rows(transcript)
 	answers = [row["message"] for row in rows if row["type"] == "assistant"]
 	if not answers:
 		return tr(f"{meta['description']}: starting.", f"{meta['description']} : démarrage.")
@@ -67,19 +63,19 @@ def describe_agent(transcript: Path, now: float) -> str:
 
 def log_usage(session_transcript: str, agent_id: str) -> None:
 	""" Appends to `USAGE_LOG` what an agent of a session used so far, skipping Claude Code's helpers, which keep no transcript. """
-	transcript = Path(session_transcript).with_suffix("") / "subagents" / f"agent-{agent_id}.jsonl"
+	transcript = transcripts.agent_of(Path(session_transcript), agent_id)
 	if not transcript.exists():
 		return
-	meta: JsonDict = json.loads(transcript.with_suffix(".meta.json").read_text(encoding="utf-8"))
+	meta = transcripts.read_meta(transcript)
 	log_transcript(transcript, agent_id, meta["description"], meta.get("model", ""))
 
 
 def log_child_usage(session_id: str, name: str) -> None:
 	""" Appends to `USAGE_LOG` what a child session used so far, then what each of its own agents did. """
-	for transcript in PROJECTS.glob(f"*/{session_id}.jsonl"):
+	for transcript in transcripts.sessions(session_id):
 		log_transcript(transcript, session_id, name, model="")
-		for agent in (transcript.with_suffix("") / "subagents").glob("agent-*.jsonl"):
-			log_usage(str(transcript), agent.stem.removeprefix("agent-"))
+		for agent_id in transcripts.agent_ids(transcript):
+			log_usage(str(transcript), agent_id)
 
 
 def log_transcript(transcript: Path, agent: str, description: str, model: str) -> None:
@@ -88,13 +84,13 @@ def log_transcript(transcript: Path, agent: str, description: str, model: str) -
 	Args:
 		model: Empty to take the one that wrote the transcript's last reply.
 	"""
-	replies = [row["message"] for row in read_rows(transcript) if row["type"] == "assistant" and "usage" in row["message"]]
+	replies = transcripts.replies(transcripts.read_rows(transcript))
 	usages = [reply["usage"] for reply in replies]
 	line = {
 		"time": datetime.now().isoformat(timespec="seconds"), "agent": agent, "description": description,
 		"model": model or next((reply["model"] for reply in reversed(replies) if "model" in reply), ""), "turns": len(usages),
-		"peak_context": max((sum(usage.get(kind, 0) for kind in CONTEXT_KINDS) for usage in usages), default=0),
-		**{kind: sum(usage.get(kind, 0) for usage in usages) for kind in (*CONTEXT_KINDS, "output_tokens")},
+		"peak_context": max(map(transcripts.context_size, usages), default=0),
+		**{kind: sum(usage.get(kind, 0) for usage in usages) for kind in (*transcripts.CONTEXT_KINDS, "output_tokens")},
 	}
 	with USAGE_LOG.open("a", encoding="utf-8") as log:
 		log.write(json.dumps(line) + "\n")
@@ -133,15 +129,6 @@ def usage_today() -> Report:
 		f"Agents, dernier jour\n{read}M relus, plus grand contexte {peak}k",
 	)
 	return Report(title, slices)
-
-
-def read_rows(transcript: Path) -> list[JsonDict]:
-	""" The entries of a transcript, leaving out a line still being written. """
-	rows: list[JsonDict] = []
-	for line in transcript.read_text(encoding="utf-8").splitlines():
-		with suppress(json.JSONDecodeError):
-			rows.append(json.loads(line))
-	return rows
 
 
 def describe_tool(name: str, tool_input: JsonDict) -> str:

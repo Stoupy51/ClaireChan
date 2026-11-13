@@ -27,6 +27,7 @@ from stouputils.typing import JsonDict
 
 from clairechan import i18n, launcher
 from clairechan.changes import Changes, reach_this_process
+from clairechan.claude_code import probes
 from clairechan.config import APP_DATA, CRASH_FILE, LOG_FILE, USER_CONFIG, Config
 from clairechan.console import enable_colors
 from clairechan.launcher import CHANGED, READY, RESTART, SET_ASIDE
@@ -310,6 +311,14 @@ def report_ready(session: Session, listener: Listener, face: Face) -> None:
 	print(READY, end="", flush=True)
 
 
+def report_update(session: Session, face: Face) -> None:
+	""" Tells her face which surfaces of Claude Code broke, when the session starts on a version the probes did not check yet. """
+	if not (face.ready.wait(STARTUP_S) and session.started.wait(STARTUP_S)):
+		return
+	if (update := probes.after_update()) and update.broken:
+		PEER.send("claude_code_broke", version=update.version, broken=update.broken)
+
+
 def restart(change: str) -> None:
 	""" Quits for the launcher to start the app again on its changed code. """
 	print(CHANGED + change, flush=True)
@@ -396,6 +405,7 @@ def run() -> None:
 	threading.Thread(target=listener.run, args=(microphone(),), daemon=True).start()
 	# Its waits for the session and Whisper would otherwise freeze the app until they are done
 	threading.Thread(target=report_ready, args=(session, listener, face), daemon=True).start()
+	threading.Thread(target=report_update, args=(session, face), daemon=True).start()
 	code = app.exec()
 	LOG.info("Exiting with code %s, threads alive: %s", code, ", ".join(thread.name for thread in threading.enumerate()))
 	logging.shutdown()

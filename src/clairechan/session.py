@@ -20,7 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, SignalInstance
 from stouputils.typing import JsonDict
 from winpty import PtyProcess
 
-from clairechan.claude_code import HOME, SESSION_ID, environment
+from clairechan.claude_code import HOME, SESSION_ID, environment, hooks, terminal, transcripts
 from clairechan.config import APP_DATA, CAPTURES, ROOT, SCREENSHOTS, USER_CONFIG, Config
 
 # Constants
@@ -51,19 +51,10 @@ WORKER_PROMPT: str = (
 	"You carry out a complicated request for Claire, the user's voice assistant, in the background. "
 	"Finish it on your own, then report the result in a few sentences: they are shown in a small speech bubble."
 )
-HOOK_EVENTS: tuple[str, ...] = (
-	"UserPromptSubmit", "PreToolUse", "PostToolUse", "PermissionRequest", "Notification", "MessageDisplay",
-	"SubagentStart", "SubagentStop", "Stop", "StopFailure", "PreCompact", "PostCompact",
-)
-RESUME_DIALOG: str = "Resume full session as-is"
-""" Option of the dialog Claude Code shows when it resumes a large session after a long pause. """
 COMPACT_ABOVE_TOKENS: int = 100_000
 """ Context size worth a `/compact`: a fresh session already holds about 50k tokens of system prompt and tools. """
-SESSION_URL: re.Pattern[str] = re.compile(r"https://claude\.ai/code/session_\w+")
 ANSWER_WAIT_S: float = 60.0
 """ How long a permission request waits for the user's spoken answer before the dialog is left to them. """
-PASTE_DELAY_MS: int = 400
-""" Pause between the text and Enter, so the TUI takes the text as one paste before submitting it. """
 
 
 # Classes
@@ -121,8 +112,8 @@ class Session(QObject):
 		super().__init__()
 		self.settings = APP_DATA / "session_settings.json"
 		waits = {"PermissionRequest": ANSWER_WAIT_S + 10}
-		hooks = {name: [{"hooks": [{"type": "http", "url": hooks_url, "timeout": waits.get(name, 5)}]}] for name in HOOK_EVENTS}
-		self.settings.write_text(json.dumps({"hooks": hooks, "inputNeededNotifEnabled": True}), encoding="utf-8")
+		events = {name: [{"hooks": [{"type": "http", "url": hooks_url, "timeout": waits.get(name, 5)}]}] for name in hooks.EVENTS}
+		self.settings.write_text(json.dumps({"hooks": events, "inputNeededNotifEnabled": True}), encoding="utf-8")
 		self.id = SESSION_ID.read_text() if SESSION_ID.exists() else ""
 		self.transcript = ""
 		self.busy = False
@@ -177,11 +168,11 @@ class Session(QObject):
 				stream.feed(output)
 			shown = self.text()
 			# Enter picks its first option, "Resume from summary", which Claude Code recommends
-			if not resume_answered and RESUME_DIALOG in shown:
+			if not resume_answered and terminal.asks_to_resume(shown):
 				resume_answered = True
 				pty.write("\r")
-			if not self.started.is_set() and (match := SESSION_URL.search(shown)):
-				self.url = match.group()
+			if not self.started.is_set() and (url := terminal.session_url(shown)):
+				self.url = url
 				self.started.set()
 
 		# Neither closed by the app nor replaced by the Claude Code a restart started since
@@ -193,6 +184,7 @@ class Session(QObject):
 			return "\n".join(self.screen.display)
 
 	def on_hook(self, event: JsonDict) -> None:
+		hooks.record(event)
 		self.transcript = event["transcript_path"]
 		if event["session_id"] != self.id:
 			self.id = event["session_id"]
@@ -213,14 +205,14 @@ class Session(QObject):
 
 	def compact(self) -> bool:
 		""" Types `/compact` when the conversation is large enough to be worth that request, and says whether it did. """
-		if not self.transcript or context_tokens(Path(self.transcript)) < COMPACT_ABOVE_TOKENS:
+		if not self.transcript or transcripts.context_tokens(Path(self.transcript)) < COMPACT_ABOVE_TOKENS:
 			return False
 		self.send("/compact")
 		return True
 
 	def send(self, prompt: str) -> None:
 		self.pty.write(prompt)
-		QTimer.singleShot(PASTE_DELAY_MS, partial(self.pty.write, "\r"))
+		QTimer.singleShot(terminal.PASTE_DELAY_MS, partial(self.pty.write, "\r"))
 
 	def open(self) -> None:
 		webbrowser.open(self.url)
@@ -273,15 +265,4 @@ def system_prompt(additions: str, *, commit: bool) -> str:
 	"""
 	base = SYSTEM_PROMPT + (COMMIT_CHANGES if commit else REVIEW_CHANGES)
 	return f"{base}\n{additions.strip()}" if additions.strip() else base
-
-
-def context_tokens(transcript: Path) -> int:
-	""" Size of a conversation at its last reply, 0 when it was compacted since. """
-	for line in reversed(transcript.read_text(encoding="utf-8").splitlines()):
-		entry = json.loads(line)
-		if entry.get("subtype") == "compact_boundary":
-			return 0
-		if usage := entry.get("message", {}).get("usage"):
-			return usage["input_tokens"] + usage["cache_read_input_tokens"] + usage["cache_creation_input_tokens"]
-	return 0
 

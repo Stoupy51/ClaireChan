@@ -34,6 +34,11 @@ def hook(name: str, **fields: object) -> JsonDict:
 	return {"hook_event_name": name, **fields}
 
 
+def test_she_names_the_surfaces_a_claude_code_update_broke(assistant: Assistant) -> None:
+	assistant.on_claude_code_broke("2.1.400", {"usage": "no limits", "hooks": "PreCompact has no trigger"})
+	assert assistant.avatar.bubble.text == "Claude Code updated to 2.1.400 and I can no longer read: usage, hooks. The log says why."
+
+
 def test_commands_wait_for_the_running_turn(assistant: Assistant) -> None:
 	sent: list[str] = []
 	assistant.send.connect(sent.append)
