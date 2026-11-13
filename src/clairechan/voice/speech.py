@@ -3,8 +3,10 @@
 The engine runs on the CPU, so that Whisper and games keep the GPU. It says a sentence in 3 s, and Haiku translates one in 1 to 2 s.
 """
 # Imports
+import bisect
 import functools
 import io
+import itertools
 import json
 import logging
 import os
@@ -17,7 +19,6 @@ import threading
 import time
 import urllib.parse
 import urllib.request
-import wave
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
@@ -25,6 +26,7 @@ import numpy as np
 import py7zr
 import sounddevice as sd
 import soundfile as sf
+from numpy.typing import NDArray
 from PySide6.QtCore import QObject, Signal
 from stouputils.typing import JsonDict
 
@@ -70,6 +72,9 @@ SENTENCE: re.Pattern[str] = re.compile(r"[^。\uff01\uff1f!?\s][^。\uff01\uff1f
 """ A sentence of a Japanese line, ended by 。 or a full-width or plain ! or ?, synthesized on its own to be said sooner. """
 RATE: int = 24000
 """ Samples per second of the sound, played in one stream per line, its sentences following without reopening the device. """
+QUIET_SHARE: float = 0.1
+""" Loudness a silence counts for, as a share of the average one, so a pause still lasts a moment. """
+
 CHUNK_S: float = 0.05
 """ Sound written at a time, so that `Voice.hush` cuts a line within that much. """
 FADE_S: float = 0.2
@@ -196,23 +201,30 @@ class Voice(QObject):
 
 
 # Functions
-def vowels(query: JsonDict, duration: float) -> Vowels:
-	""" When each vowel of an `audio_query` starts in a sound of `duration` seconds, the pause after a phrase being one too.
+def vowels(query: JsonDict, sound: NDArray[np.float32]) -> Vowels:
+	""" When each vowel of an `audio_query` starts in a `sound` of the engine's rate, the pause after a phrase being one too.
 
-	The engine does not tell how long each sound lasts, so the vowels share the sound between its silences evenly.
+	The engine does not tell how long each sound lasts, so the vowels share the sound between its silences by loudness.
+	Each takes the same amount of sound, so a quiet stretch passes quickly.
 
-	>>> vowels({"prePhonemeLength": 0.1, "postPhonemeLength": 0.1, "accent_phrases": [
+	>>> query = {"prePhonemeLength": 0.1, "postPhonemeLength": 0.1, "accent_phrases": [
 	... 	{"moras": [{"vowel": "a"}, {"vowel": "N"}], "pause_mora": {"vowel": "pau"}},
-	... ]}, 1.0)
+	... ]}
+	>>> vowels(query, np.ones(RATE))
 	((0.1, 'a'), (0.367, 'N'), (0.633, 'pau'), (0.9, ''))
+	>>> vowels(query, np.concatenate([np.ones(RATE // 2), np.zeros(RATE // 2)]))
+	((0.1, 'a'), (0.24, 'N'), (0.379, 'pau'), (0.9, ''))
 	"""
 	moras = [
 		mora for phrase in query["accent_phrases"]
 		for mora in [*phrase["moras"], *([phrase["pause_mora"]] if phrase["pause_mora"] else [])]
 	]
-	start, end = query["prePhonemeLength"], duration - query["postPhonemeLength"]
-	step = (end - start) / len(moras)
-	return (*((round(start + i * step, 3), mora["vowel"]) for i, mora in enumerate(moras)), (round(end, 3), ""))
+	start, end = query["prePhonemeLength"], len(sound) / RATE - query["postPhonemeLength"]
+	spoken = np.abs(sound[round(start * RATE):round(end * RATE)])
+	floor = float(spoken.mean()) * QUIET_SHARE
+	reached = list(itertools.accumulate(float(loudness) + floor for loudness in spoken))
+	starts = (start + bisect.bisect_left(reached, reached[-1] * i / len(moras)) / RATE for i in range(len(moras)))
+	return (*((round(at, 3), mora["vowel"]) for at, mora in zip(starts, moras, strict=True)), (round(end, 3), ""))
 
 
 @functools.lru_cache(maxsize=64)
@@ -221,8 +233,7 @@ def synthesize(japanese: str, style: int) -> tuple[Vowels, bytes]:
 	query: JsonDict = json.loads(post(f"/audio_query?{urllib.parse.urlencode({'text': japanese, 'speaker': style})}"))
 	query["outputSamplingRate"] = RATE
 	wav = post(f"/synthesis?speaker={style}", json.dumps(query).encode())
-	with wave.open(io.BytesIO(wav)) as sound:
-		return vowels(query, sound.getnframes() / sound.getframerate()), wav
+	return vowels(query, sf.read(io.BytesIO(wav), dtype="float32")[0]), wav
 
 
 def is_japanese(text: str) -> bool:
