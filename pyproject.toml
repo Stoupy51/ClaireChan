@@ -29,6 +29,8 @@ dependencies = [
 	"stouputils>=26.10.1",
 	"uiautomation>=2.0.29",
 ]
+license = "MIT"
+license-files = ["LICENSE"]
 authors = [
 	{ name = "Stoupy51", email = "stoupy51@gmail.com" },
 ]

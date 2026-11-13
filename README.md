@@ -152,3 +152,7 @@ To let Claude Code work on that part, add this exception to your user settings, 
 
 `claude auto-mode config` shows the rules in effect. Without the exception, ask for that action explicitly in your message instead.
 
+
+## License
+
+The code is under the [MIT license](LICENSE). The character's images in `assets/` come from a third-party video and are not covered by it.
