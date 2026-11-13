@@ -8,32 +8,16 @@ converted with `ffmpeg -i video.mp4 -ac 1 -ar 16000 video.wav`.
 # Imports
 import argparse
 from collections import deque
-from collections.abc import Iterator
 from pathlib import Path
 
-import numpy as np
-import soundfile as sf
-
 from clairechan.config import Config
-from clairechan.voice.audio import FRAME, RATE, Audio, microphone
+from clairechan.voice.audio import microphone
+from clairechan.voice.bench import recording, timed
 from clairechan.voice.listener import Listener
 from clairechan.voice.wake import spot_wake
 
 
 # Functions
-def recording(path: Path) -> Iterator[Audio]:
-	audio = np.concatenate([sf.read(path, dtype="float32")[0], np.zeros(RATE * 2, np.float32)])
-	for start in range(0, len(audio) - FRAME, FRAME):
-		yield audio[start:start + FRAME]
-
-
-def timed(frames: Iterator[Audio], clock: list[float]) -> Iterator[Audio]:
-	""" The frames, writing into `clock[0]` the second of audio each one ends at. """
-	for count, frame in enumerate(frames, start=1):
-		clock[0] = count * FRAME / RATE
-		yield frame
-
-
 def main() -> None:
 	parser = argparse.ArgumentParser()
 	parser.add_argument("--wav", type=Path)

@@ -11,7 +11,7 @@ from PySide6.QtCore import QObject, Signal
 from clairechan import i18n
 from clairechan.config import FOLLOW_UP_S, Config
 from clairechan.phrases import match_phrase
-from clairechan.voice.audio import GPU, RATE, Audio, Speech, load_whisper, utterances
+from clairechan.voice.audio import GPU, RATE, Audio, Speech, Whisper, load_whisper, utterances
 from clairechan.voice.wake import spot_wake
 
 # Constants
@@ -64,18 +64,14 @@ class Listener(QObject):
 			if not self.transcribes(speech):
 				continue
 			started = time.monotonic()
-			segments, info = whisper.transcribe(
-				speech.audio, language=self.config.language, beam_size=1, condition_on_previous_text=False,
-				initial_prompt=SPELLING,
-			)
-			text = " ".join(segment.text.strip() for segment in segments)
+			text, language, probability = transcribe(whisper, speech.audio, self.config.language)
 			# Without its text: most of what the microphone hears is not said to her, and the log is kept for weeks
 			LOG.info(
 				"Transcribed %.1f s of %s (%.2f) in %.2f s, %s",
-				len(speech.audio) / RATE, info.language, info.language_probability, time.monotonic() - started,
+				len(speech.audio) / RATE, language, probability, time.monotonic() - started,
 				"ended" if speech.ended else "ongoing",
 			)
-			self.hear(text, info.language, ended=speech.ended)
+			self.hear(text, language, ended=speech.ended)
 
 	def hear(self, text: str, language: str, *, ended: bool) -> None:
 		""" Acts on a sentence Whisper heard in `language`, which her lines then follow when the sentence was meant for her. """
@@ -159,4 +155,13 @@ class Listener(QObject):
 		self.request = []
 		if request:
 			self.heard.emit(request)
+
+
+# Functions
+def transcribe(whisper: Whisper, audio: Audio, language: str | None) -> tuple[str, str, float]:
+	""" The text, the language Whisper detected or was given, and how sure it is of it. """
+	segments, info = whisper.transcribe(
+		audio, language=language, beam_size=1, condition_on_previous_text=False, initial_prompt=SPELLING,
+	)
+	return " ".join(segment.text.strip() for segment in segments), info.language, info.language_probability
 
