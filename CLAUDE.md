@@ -26,7 +26,7 @@ A voice assistant with an anime overlay (PySide6), driving a hidden Claude Code 
 
 Actions run on the Qt thread: keep them quick, and start a thread for anything long, as `meeting.py` does, or set `threaded=True` on a tool that answers after seconds. An effect on the session itself (typing `/model`, restarting it) goes in `Assistant.run_action`, not in the action.
 
-Once the session has nothing running, a change applies by itself. A change to a module only the face loads (actions, services, overlay, sprites) starts the face again alone in 1.5 s and the session goes on. A change to a module the core loads restarts the whole app on the same conversation, cutting the session's work: keep what the face can do in the face. The face keeps nothing in memory across a restart, so state that must survive one goes in a file of `APP_DATA`, as `ALARMS` and `CHILDREN` do. A new action reaches the session as a tool after the restart of the session the core does when the list of tools changes.
+Once the session has nothing running, a change applies by itself. A change to a module only the face loads (actions, services, overlay, sprites) starts the face again alone in 1.5 s and the session goes on. A change to a module the core loads restarts the whole app on the same conversation, cutting the session's work: keep what the face can do in the face. The face keeps nothing in memory across a restart, so state that must survive one goes in a file of `APP_DATA`, as `ALARMS` and `CHILDREN` do. A new action reaches the hidden session as a tool without a restart, the MCP server telling it the list changed (`notifications/tools/list_changed`).
 
 ## Checks
 

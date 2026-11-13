@@ -181,8 +181,7 @@ class Core(QObject):
 		match kind:
 			case "hello":
 				self.listener.phrases = {name: re.compile(phrase, re.IGNORECASE) for name, phrase in fields["phrases"].items()}
-				# Claude Code reads the tools of a server only when it starts
-				if self.tools.offer(fields["tools"]):
+				if "main" in self.tools.offer(fields["tools"]):
 					self.session.restart(self.listener.config)
 				PEER.send("welcome", tools_url=self.tools.urls["child"])
 				self.face.on_hello()

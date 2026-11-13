@@ -1,6 +1,7 @@
 """ The actions offered to the sessions as MCP tools, their calls crossing the link between the app's two processes. """
 # Imports
 import json
+import time
 import urllib.error
 import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor
@@ -65,6 +66,20 @@ def test_a_tool_call_crosses_the_link_and_each_role_reaches_only_its_tools(app: 
 	assert refused["error"]["message"] == "Unknown tool timer"
 	with pytest.raises(urllib.error.HTTPError):
 		post(server.urls["main"] + "x", "tools/list", {})
+
+
+def test_a_session_holding_a_stream_is_told_the_tools_changed_and_the_others_have_to_restart(links: tuple[Link, Link]) -> None:
+	server = ActionServer(links[0])
+	listed = tools.listed(child=False)
+	assert server.offer({"main": listed[:1], "child": listed[:1]}) == []
+
+	with urllib.request.urlopen(server.urls["main"]) as stream:
+		while not server.streams:
+			time.sleep(0.01)
+		assert server.offer({"main": listed, "child": listed}) == ["child"]
+		assert stream.readline() == b"event: message\n"
+		sent = json.loads(stream.readline().removeprefix(b"data: "))
+		assert sent == {"jsonrpc": "2.0", "method": "notifications/tools/list_changed"}
 
 
 def test_a_tool_tells_the_types_of_its_arguments_and_shows_the_picture_it_made(tmp_path: Path) -> None:
