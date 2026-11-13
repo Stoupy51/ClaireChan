@@ -129,6 +129,9 @@ uv run prototypes/overlay_demo.py              # plays every expression in a loo
 uv run scripts/demo_video/main.py              # renders dist/demo.mp4, a scripted run through her features (needs ffmpeg)
 uv run prototypes/voice_demo.py --wav clip.wav # prints what the listener hears, from the microphone without --wav
 uv run prototypes/voice_demo.py --spotter      # counts what the wake phrase spotter of a computer without NVIDIA GPU catches
+uv run python -m clairechan.voice.bench record request   # 30 requests to the microphone, into %APPDATA%\ClaireChan\bench
+uv run python -m clairechan.voice.bench record noise     # an hour of what she must not wake to (--minutes 60)
+uv run python -m clairechan.voice.bench replay           # recall, false alarms and wake delay of Whisper alone and of the spotter
 ```
 
 The demo video at the top of this file is the `_small` copy of that script's video, uploaded with the [gh-image](https://github.com/drogers0/gh-image) extension:
