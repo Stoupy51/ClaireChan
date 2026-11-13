@@ -124,6 +124,8 @@ def on_message(assistant: Assistant, windows: Windows, kind: str, fields: JsonDi
 			assistant.on_set_aside(fields["reason"])
 		case "session_lost":
 			assistant.on_session_lost()
+		case "claude_code_broke":
+			assistant.on_claude_code_broke(fields["version"], fields["broken"])
 		case "quitting":
 			windows.tray.hide()
 		case _:

@@ -3,13 +3,11 @@
 import json
 import shutil
 import subprocess
-from pathlib import Path
 
 import numpy as np
 import stouputils as stp
-from stouputils.typing import JsonDict
 
-from clairechan.claude_code import HOME
+from clairechan.claude_code import HOME, trust
 from clairechan.config import Config
 from clairechan.console import enable_colors
 from clairechan.voice.audio import GPU, RATE, load_whisper
@@ -38,12 +36,12 @@ def main() -> None:
 		stp.progress("Claude Code opens its sign-in page: sign in with your Claude Pro or Max account.")
 		subprocess.run(["claude", "auth", "login"])
 	# The decision stays with the user: Claude Code shows its own dialog, and records the answer in a file it keeps rewriting
-	if not trusted():
+	if not trust.is_trusted(HOME):
 		stp.progress('Claude Code opens in her folder and asks if you trust it: pick "Yes, I trust this folder", then type /exit')
 		HOME.mkdir(parents=True, exist_ok=True)
 		subprocess.run(["claude"], cwd=HOME)
 
-	if signed_in() and trusted():
+	if signed_in() and trust.is_trusted(HOME):
 		stp.info(f"Claude Code is ready. Start the app with: {stp.CYAN}uv run clairechan")
 	else:
 		stp.warning("Claude Code is not signed in or does not trust this folder yet: run this setup again.")
@@ -53,11 +51,4 @@ def signed_in() -> bool:
 	""" Whether Claude Code is signed in with a Claude subscription, which the app needs instead of an API key. """
 	status = json.loads(subprocess.run(["claude", "auth", "status"], capture_output=True, text=True).stdout)
 	return status.get("authMethod") == "claude.ai"
-
-
-def trusted() -> bool:
-	""" Whether the user has told Claude Code it may work in the folder of the hidden session. """
-	projects: dict[str, JsonDict] = json.loads((Path.home() / ".claude.json").read_text(encoding="utf-8")).get("projects", {})
-	# Claude Code writes the drive letter in either case
-	return any(settings.get("hasTrustDialogAccepted") for key, settings in projects.items() if key.lower() == HOME.as_posix().lower())
 

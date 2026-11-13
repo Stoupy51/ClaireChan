@@ -13,6 +13,7 @@ from stouputils.typing import JsonDict
 
 from clairechan import i18n
 from clairechan.actions import find, route
+from clairechan.claude_code import background, panels, transcripts
 from clairechan.services import agents, alarms, children, claude, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
 
@@ -83,9 +84,9 @@ def test_the_plan_usage_and_the_context_are_laid_out_for_a_human_in_french(monke
 			"| mcp__x | x | 162 |\n"
 		),
 	}
-	def panel(command: str, *_options: str) -> str:
+	def panel(command: str, *_options: str, **_flags: int) -> str:
 		return outputs[command]
-	monkeypatch.setattr(claude, "panel", panel)
+	monkeypatch.setattr(panels, "panel", panel)
 	monkeypatch.setattr(claude, "SESSION_ID", tmp_path / "session_id")
 	assert str(claude.context()) == "Il n'y a pas encore de conversation."
 
@@ -147,7 +148,7 @@ def test_a_minecraft_tool_relays_the_bridge_answer_and_says_when_the_client_is_o
 def test_the_agent_progress_tells_what_a_running_agent_and_a_finished_one_did(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
 	session = tmp_path / "project" / "abc" / "subagents"
 	session.mkdir(parents=True)
-	monkeypatch.setattr(agents, "PROJECTS", tmp_path)
+	monkeypatch.setattr(transcripts, "PROJECTS", tmp_path)
 	monkeypatch.setattr(agents, "SESSION_ID", tmp_path / "session_id")
 	(tmp_path / "session_id").write_text("abc", encoding="utf-8")
 	started = {"type": "user", "timestamp": "2026-10-18T21:00:00+00:00", "message": {"content": "task"}}
@@ -191,8 +192,8 @@ def test_a_child_session_is_reported_finished_once_idle_after_working_and_its_us
 	statuses = iter(["busy", "busy", "idle"])
 	monkeypatch.setattr(children, "POLL_S", 0)
 	monkeypatch.setattr(children, "WAITING", tmp_path / "children.json")
-	monkeypatch.setattr(children, "sessions", lambda: {"ab12": {"status": next(statuses), "sessionId": "ab12-cd34"}})
-	monkeypatch.setattr(agents, "PROJECTS", tmp_path)
+	monkeypatch.setattr(background, "sessions", lambda: {"ab12": {"status": next(statuses), "sessionId": "ab12-cd34"}})
+	monkeypatch.setattr(transcripts, "PROJECTS", tmp_path)
 	monkeypatch.setattr(agents, "USAGE_LOG", tmp_path / "usage.jsonl")
 	usage = {"input_tokens": 10, "cache_read_input_tokens": 1_000_000, "cache_creation_input_tokens": 0, "output_tokens": 3000}
 	reply = {"type": "assistant", "message": {"model": "claude-fable-5-2", "usage": usage}}

@@ -10,6 +10,7 @@ A voice assistant with an anime overlay (PySide6), driving a hidden Claude Code 
 - `src/clairechan/link.py`: `PEER`, the other process, one JSON message per line over a local socket.
 - `src/clairechan/changes.py`: what the session changed since the code was loaded, and whether it reaches the core.
 - `src/clairechan/session.py`: the hidden `claude` process in a pseudo-terminal, working in `%APPDATA%\ClaireChan\home` (`claude_code.HOME`), and the hook server.
+- `src/clairechan/claude_code/`: the only package that knows the formats Claude Code writes and reads (`panels.py` for `/usage` and `/context`, `terminal.py`, `background.py`, `transcripts.py`, `trust.py`, `hooks.py`). `probes.py` has one probe per surface, run at startup when `claude --version` changes, and her face announces what broke. A new format goes in this package with its probe, never in a service.
 - `src/clairechan/launcher.py`: runs the app, starts it again after a change to the core, and puts the change aside in git when the app then fails to start. It imports nothing of the app.
 - `src/clairechan/actions.py`: `ACTIONS`, what she does on the computer. `mcp.py` offers the same list to the session as tools.
 - `src/clairechan/services/`: what the actions call (weather, programs, timers, other applications' windows in `desktop.py`, the dream of the shared memory in `dream.py`). Put the code of a new action there when it is more than a few lines.

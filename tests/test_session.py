@@ -1,28 +1,15 @@
-""" How large the session's conversation is, read from its transcript to decide whether a compaction is worth it. """
+""" The hook server that relays the session's events and permission requests. """
 # Imports
 import json
 import urllib.request
 from concurrent.futures import Future, ThreadPoolExecutor
-from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
-from clairechan.session import HookServer, context_tokens
+from clairechan.session import HookServer
 
 
 # Functions
-def test_context_size_is_read_from_the_last_reply_until_a_compaction(tmp_path: Path) -> None:
-	usage = {"input_tokens": 2, "cache_read_input_tokens": 120_000, "cache_creation_input_tokens": 3000}
-	reply = {"type": "assistant", "message": {"role": "assistant", "usage": usage}}
-	transcript = tmp_path / "session.jsonl"
-	transcript.write_text("\n".join(json.dumps(entry) for entry in [reply, {"type": "last-prompt"}]), encoding="utf-8")
-	assert context_tokens(transcript) == 123_002
-
-	boundary = {"type": "system", "subtype": "compact_boundary"}
-	transcript.write_text("\n".join(json.dumps(entry) for entry in [reply, boundary, {"type": "user"}]), encoding="utf-8")
-	assert context_tokens(transcript) == 0
-
-
 def test_a_permission_request_waits_for_the_spoken_answer_and_returns_it(app: QApplication) -> None:
 	server = HookServer(lambda _tool, _tool_input: None)
 	def answer(verdict: Future[bool]) -> None:

@@ -371,6 +371,19 @@ class Assistant(QObject):
 		self.agents.clear()
 		self.on_failure(tr("my Claude session stopped, I started it again", "ma session Claude s'est arrêtée, je l'ai relancée"))
 
+	def on_claude_code_broke(self, version: str, broken: dict[str, str]) -> None:
+		""" Claude Code updated, and what the app reads of some of its surfaces no longer has the shape it expects. """
+		surfaces = ", ".join(broken)
+		LOG.warning("Claude Code %s broke: %s", version, broken)
+		said = tr(
+			f"Claude Code updated to {version} and I can no longer read: {surfaces}. The log says why.",
+			f"Claude Code est passé en {version} et je ne sais plus lire : {surfaces}. Le journal dit pourquoi.",
+		)
+		self.appear("sad", bubble=said)
+		self.dismiss.start(reading_ms(said))
+		self.say_aloud(said)
+		self.flush()
+
 	def on_set_aside(self, reason: str) -> None:
 		""" A change to the app's code broke it, and was put aside in git. """
 		said = tr(
