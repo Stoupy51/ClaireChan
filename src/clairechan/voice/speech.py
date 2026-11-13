@@ -124,6 +124,7 @@ class Voice(QObject):
 		while True:
 			text, style = self.lines.get()
 			if not self.lines.empty():
+				LOG.info("Not said, a newer line replaced it: %s", text)
 				continue
 			hushes = self.hushes
 			try:
@@ -134,18 +135,22 @@ class Voice(QObject):
 			# The engine spells out Latin letters, so a line Haiku left untranslated is not said
 			if not KANA.search(japanese):
 				LOG.warning("Not said, left untranslated: %s", japanese)
-			elif hushes == self.hushes:
+			elif hushes != self.hushes:
+				LOG.info("Not said, hushed while translated: %s", japanese)
+			else:
 				self.translated_lines.put((japanese, style, hushes))
 
 	def say_lines(self) -> None:
 		while True:
 			japanese, style, hushes = self.translated_lines.get()
-			if self.translated_lines.empty() and hushes == self.hushes:
-				LOG.info("Said: %s", japanese)
-				try:
-					self.speak(japanese, style, hushes)
-				except Exception:
-					LOG.exception("Could not say: %s", japanese)
+			if not self.translated_lines.empty() or hushes != self.hushes:
+				LOG.info("Not said, hushed or replaced by a newer line: %s", japanese)
+				continue
+			LOG.info("Said: %s", japanese)
+			try:
+				self.speak(japanese, style, hushes)
+			except Exception:
+				LOG.exception("Could not say: %s", japanese)
 
 	def translate(self, text: str) -> str:
 		""" The text in spoken Japanese, by a Haiku conversation kept open: a line does not wait the 4 s `claude` takes to start. """
