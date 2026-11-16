@@ -134,10 +134,11 @@ ACTIONS: list[Action] = [
 	),
 	Action(
 		name="agent_usage",
-		description="What the background agents and the child sessions used over the last day, by model: "
+		description="What the background agents and the child sessions used over a period, by model: "
 		"tokens written and read, largest context.",
 		phrases=r"(?:usage|consommation|coûts?) (?:des |de l')?agents?|agents? (?:usage|costs?)",
-		run=lambda _: agents.usage_today(),
+		run=lambda arguments: agents.usage(float((arguments.get("days") or "1").replace(",", "."))),
+		parameters={"days": Parameter("How many days back, 1 by default: 3, 7 for a week, 30 for a month.", kind="number")},
 	),
 	Action(
 		name="dream",

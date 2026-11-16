@@ -96,9 +96,10 @@ def log_transcript(transcript: Path, agent: str, description: str, model: str) -
 		log.write(json.dumps(line) + "\n")
 
 
-def usage_today() -> Report:
-	""" What the agents used over the last day, one slice per model sized by the tokens it wrote. """
-	since = (datetime.now() - timedelta(days=1)).isoformat(timespec="seconds")
+def usage(days: float = 1) -> Report:
+	""" What the agents used over the last `days`, one slice per model sized by the tokens it wrote. """
+	since = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+	period = tr("last day", "dernier jour") if days == 1 else tr(f"last {days:g} days", f"{days:g} derniers jours")
 	totals: dict[str, JsonDict] = {}
 	for line in USAGE_LOG.read_text(encoding="utf-8").splitlines() if USAGE_LOG.exists() else []:
 		row: JsonDict = json.loads(line)
@@ -106,7 +107,7 @@ def usage_today() -> Report:
 			totals[row["agent"]] = row
 
 	if not totals:
-		return Report(tr("No agent used anything in the last day.", "Aucun agent n'a rien consommé depuis un jour."), ())
+		return Report(tr(f"No agent used anything in the {period}.", f"Aucun agent n'a rien consommé sur : {period}."), ())
 
 	by_model: defaultdict[str, list[JsonDict]] = defaultdict(list)
 	for row in totals.values():
@@ -125,8 +126,8 @@ def usage_today() -> Report:
 	read = sum(row["cache_read_input_tokens"] for row in totals.values()) // 1_000_000
 	peak = max(row["peak_context"] for row in totals.values()) // 1000
 	title = tr(
-		f"Agents, last day\n{read}M read, largest context {peak}k",
-		f"Agents, dernier jour\n{read}M relus, plus grand contexte {peak}k",
+		f"Agents, {period}\n{read}M read, largest context {peak}k",
+		f"Agents, {period}\n{read}M relus, plus grand contexte {peak}k",
 	)
 	return Report(title, slices)
 

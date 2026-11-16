@@ -183,7 +183,8 @@ def test_an_agent_that_stops_is_logged_and_summed_by_model(tmp_path: Path, monke
 	agents.log_usage(str(session), "a1")
 	agents.log_usage(str(session), "a1")
 
-	assert str(agents.usage_today()) == "Agents, last day\n4M read, largest context 2000k\nsonnet: 1 agents, 2 turns (10k written)"
+	assert str(agents.usage()) == "Agents, last day\n4M read, largest context 2000k\nsonnet: 1 agents, 2 turns (10k written)"
+	assert str(agents.usage(7)).startswith("Agents, last 7 days\n")
 
 
 def test_a_child_session_is_reported_finished_once_idle_after_working_and_its_usage_logged(
@@ -209,5 +210,5 @@ def test_a_child_session_is_reported_finished_once_idle_after_working_and_its_us
 	children.CHILDREN.watch("ab12", "Reticle")
 
 	assert done == [("Reticle", "ab12")]
-	assert str(agents.usage_today()).endswith("claude-fable-5-2: 1 agents, 1 turns (3k written)")
+	assert str(agents.usage()).endswith("claude-fable-5-2: 1 agents, 1 turns (3k written)")
 
