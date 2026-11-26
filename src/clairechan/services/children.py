@@ -66,17 +66,19 @@ class Children(QObject):
 		threading.Thread(target=self.watch, args=(child_id, name), daemon=True).start()
 
 	def watch(self, child_id: str, name: str) -> None:
-		""" Polls until the child is idle after having worked, or has been idle for `SHORT_JOB_S`, or has left the list. """
+		""" Polls until the child is idle after having worked, or has been idle for `SHORT_JOB_S`, or has ended. """
 		began = time.time()
 		worked = False
 		session = ""
 		while True:
 			time.sleep(POLL_S)
-			row = background.sessions().get(child_id)
-			status = row["status"] if row else None
-			session = row["sessionId"] if row else session
-			worked = worked or status == "busy"
-			if status is None or (status == "idle" and (worked or time.time() - began > SHORT_JOB_S)):
+			row = background.sessions().get(child_id, {})
+			state = row.get("state", "done")
+			session = row.get("sessionId", session)
+			worked = worked or state == "working"
+			# A child asking for a permission is blocked too, but its process says it waits
+			idle = state == "blocked" and row.get("status") != "waiting"
+			if state in background.ENDED or (idle and (worked or time.time() - began > SHORT_JOB_S)):
 				break
 
 		self.waiting.pop(child_id, None)

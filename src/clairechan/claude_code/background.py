@@ -11,9 +11,11 @@ from clairechan.claude_code import run
 # Constants
 STARTED: re.Pattern[str] = re.compile(r"backgrounded\W+(?P<id>[0-9a-f]+)")
 """ The line `claude --bg` prints, such as "backgrounded · c63df584 · Name". """
-ROW_KEYS: tuple[str, ...] = ("kind", "status")
-BACKGROUND_KEYS: tuple[str, ...] = ("id", "sessionId")
+ROW_KEYS: tuple[str, ...] = ("kind",)
+BACKGROUND_KEYS: tuple[str, ...] = ("id", "sessionId", "state")
 """ What a row of a background session has on top of `ROW_KEYS`. """
+ENDED: tuple[str, ...] = ("done", "failed", "stopped")
+""" The `state` of a background session that will not work again, the others being "working" and "blocked". """
 FLAGS: tuple[str, ...] = ("--bg", "--name", "--model", "--effort")
 """ The options of `claude --bg` the app passes, which `claude --help` must still list. """
 
@@ -36,7 +38,7 @@ def rows(creationflags: int = subprocess.CREATE_NO_WINDOW) -> list[JsonDict]:
 
 
 def sessions() -> dict[str, JsonDict]:
-	""" What `claude agents` tells about each background session, its `status` and `sessionId` among it, by id. """
+	""" What `claude agents` tells about each background session, its `state` and `sessionId` among it, by id. """
 	return {row["id"]: row for row in rows() if row["kind"] == "background"}
 
 

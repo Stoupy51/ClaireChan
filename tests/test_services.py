@@ -190,10 +190,10 @@ def test_an_agent_that_stops_is_logged_and_summed_by_model(tmp_path: Path, monke
 def test_a_child_session_is_reported_finished_once_idle_after_working_and_its_usage_logged(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-	statuses = iter(["busy", "busy", "idle"])
+	states = iter(["working", "working", "blocked"])
 	monkeypatch.setattr(children, "POLL_S", 0)
 	monkeypatch.setattr(children, "WAITING", tmp_path / "children.json")
-	monkeypatch.setattr(background, "sessions", lambda: {"ab12": {"status": next(statuses), "sessionId": "ab12-cd34"}})
+	monkeypatch.setattr(background, "sessions", lambda: {"ab12": {"state": next(states), "sessionId": "ab12-cd34"}})
 	monkeypatch.setattr(transcripts, "PROJECTS", tmp_path)
 	monkeypatch.setattr(agents, "USAGE_LOG", tmp_path / "usage.jsonl")
 	usage = {"input_tokens": 10, "cache_read_input_tokens": 1_000_000, "cache_creation_input_tokens": 0, "output_tokens": 3000}

@@ -39,7 +39,7 @@ def claude_code(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> list[str]:
 	def panel(*_arguments: str, **_options: object) -> str:
 		return USAGE_PANEL
 	def rows(_creationflags: int) -> list[JsonDict]:
-		return [{"kind": "background", "status": "idle", "id": "c63df584", "sessionId": "abc"}]
+		return [{"kind": "background", "state": "blocked", "id": "c63df584", "sessionId": "abc"}]
 
 	reply = {"type": "assistant", "message": {"usage": dict.fromkeys(transcripts.CONTEXT_KINDS, 1)}}
 	project = tmp_path / "projects" / "D--repo"
@@ -73,10 +73,10 @@ def test_a_version_that_changes_a_format_is_announced_with_the_surface_it_broke(
 	claude_code[0] = "2.1.400"
 	def usage_moved(*_arguments: str, **_options: int) -> str:
 		return "Usage moved to claude.ai/usage"
-	def rows_without_status(_creationflags: int) -> list[JsonDict]:
-		return [{"kind": "background", "state": "idle", "id": "c63df584"}]
+	def rows_without_state(_creationflags: int) -> list[JsonDict]:
+		return [{"kind": "background", "status": "idle", "id": "c63df584", "sessionId": "abc"}]
 	monkeypatch.setattr(panels, "panel", usage_moved)
-	monkeypatch.setattr(background, "rows", rows_without_status)
+	monkeypatch.setattr(background, "rows", rows_without_state)
 	(tmp_path / "projects" / "D--repo" / "abc.jsonl").write_text(
 		json.dumps({"type": "assistant", "message": {"usage": {"input_tokens": 1}}}), encoding="utf-8",
 	)
@@ -87,7 +87,7 @@ def test_a_version_that_changes_a_format_is_announced_with_the_surface_it_broke(
 	assert update.version == "2.1.400"
 	assert update.broken == {
 		"usage": "the /usage panel does not show the two limits",
-		"background": "a background row has no status",
+		"background": "a background row has no state",
 		"transcripts": "usage has no cache_read_input_tokens",
 		"hooks": "PreCompact has no trigger",
 	}
