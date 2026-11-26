@@ -27,6 +27,15 @@ def session_url(screen: str) -> str | None:
 	return match.group() if (match := SESSION_URL.search(screen)) else None
 
 
+def bottom(screen: str, count: int = 12) -> str:
+	""" The last lines the screen shows, where Claude Code draws a dialog that waits for an answer.
+
+	>>> bottom("a\\n   \\nb  \\nc", count=2)
+	'b\\nc'
+	"""
+	return "\n".join([line.rstrip() for line in screen.splitlines() if line.strip()][-count:])
+
+
 def asks_to_resume(screen: str) -> bool:
 	""" Whether the screen shows the dialog that Enter answers with its first option, "Resume from summary". """
 	return RESUME_DIALOG in screen

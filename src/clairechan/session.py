@@ -20,7 +20,7 @@ from PySide6.QtCore import QObject, QTimer, Signal, SignalInstance
 from stouputils.typing import JsonDict
 from winpty import PtyProcess
 
-from clairechan.claude_code import HOME, SESSION_ID, environment, hooks, terminal, transcripts
+from clairechan.claude_code import HOME, SESSION_ID, environment, hooks, terminal, transcripts, trust
 from clairechan.config import APP_DATA, CAPTURES, ROOT, SCREENSHOTS, USER_CONFIG, Config
 
 # Constants
@@ -53,6 +53,8 @@ WORKER_PROMPT: str = (
 )
 COMPACT_ABOVE_TOKENS: int = 100_000
 """ Context size worth a `/compact`: a fresh session already holds about 50k tokens of system prompt and tools. """
+SUBMIT_WAIT_MS: int = 15_000
+""" How long a typed prompt may take to start a turn before the session counts as stuck on something on its screen. """
 ANSWER_WAIT_S: float = 60.0
 """ How long a permission request waits for the user's spoken answer before the dialog is left to them. """
 
@@ -107,17 +109,23 @@ class Session(QObject):
 	compacted = Signal()
 	died = Signal()
 	""" Claude Code stopped by itself, with whatever it was running. """
+	stuck = Signal(str)
+	""" A typed prompt started no turn, with the bottom of the screen, which shows what Claude Code waits for instead. """
 
 	def __init__(self, hooks_url: str, tools_url: str, config: Config) -> None:
 		super().__init__()
 		self.settings = APP_DATA / "session_settings.json"
 		waits = {"PermissionRequest": ANSWER_WAIT_S + 10}
 		events = {name: [{"hooks": [{"type": "http", "url": hooks_url, "timeout": waits.get(name, 5)}]}] for name in hooks.EVENTS}
-		self.settings.write_text(json.dumps({"hooks": events, "inputNeededNotifEnabled": True}), encoding="utf-8")
+		# Without the skill, Claude Code never offers its auto mode setup, a dialog that would take the next prompt's Enter
+		settings = {"hooks": events, "inputNeededNotifEnabled": True, "skillOverrides": {"auto-mode-setup": "off"}}
+		self.settings.write_text(json.dumps(settings), encoding="utf-8")
 		self.id = SESSION_ID.read_text() if SESSION_ID.exists() else ""
 		self.transcript = ""
 		self.busy = False
 		""" Whether a turn or a compaction runs, between the hooks that open and close them. """
+		self.submitted = 0
+		""" How many prompts started a turn. """
 		self.screen_lock = threading.Lock()
 		self.tools_url = tools_url
 		self.url = "https://claude.ai/code"
@@ -131,6 +139,9 @@ class Session(QObject):
 		prompt.write_text(system_prompt(config.prompt, commit=config.commit_changes), encoding="utf-8")
 		for folder in (HOME, CAPTURES, SCREENSHOTS):
 			folder.mkdir(parents=True, exist_ok=True)
+		# Claude Code asks before working in an --add-dir folder it does not trust, in a dialog nobody sees here
+		for folder in (ROOT, CAPTURES, SCREENSHOTS):
+			trust.trust(folder)
 		worker = {"description": WORKER_DESCRIPTION, "prompt": WORKER_PROMPT, "model": config.agent_model, "background": True}
 		resume = ["--resume", self.id] if self.id else ["--session-id", str(uuid.uuid4())]
 		# Deferred behind tool search, her tools would show the session their names only, so it would pick the ones it already loaded
@@ -192,6 +203,7 @@ class Session(QObject):
 		match event["hook_event_name"]:
 			case "UserPromptSubmit":
 				self.busy = True
+				self.submitted += 1
 			case "Stop" | "StopFailure":
 				self.busy = False
 			# Claude Code compacts on its own during a turn, which stays busy
@@ -213,6 +225,13 @@ class Session(QObject):
 	def send(self, prompt: str) -> None:
 		self.pty.write(prompt)
 		QTimer.singleShot(terminal.PASTE_DELAY_MS, partial(self.pty.write, "\r"))
+		# A slash command runs without a turn, so no hook would tell it was taken
+		if not prompt.startswith("/"):
+			QTimer.singleShot(SUBMIT_WAIT_MS, partial(self.check_submitted, self.submitted))
+
+	def check_submitted(self, submitted_before: int) -> None:
+		if self.submitted == submitted_before:
+			self.stuck.emit(terminal.bottom(self.text()))
 
 	def open(self) -> None:
 		webbrowser.open(self.url)

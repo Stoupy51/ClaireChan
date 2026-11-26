@@ -27,7 +27,7 @@ from stouputils.typing import JsonDict
 
 from clairechan import i18n, launcher
 from clairechan.changes import Changes, reach_this_process
-from clairechan.claude_code import probes
+from clairechan.claude_code import probes, terminal
 from clairechan.config import APP_DATA, CRASH_FILE, LOG_FILE, USER_CONFIG, Config
 from clairechan.console import enable_colors
 from clairechan.launcher import CHANGED, READY, RESTART, SET_ASIDE
@@ -280,6 +280,10 @@ def tell_hook(event: JsonDict) -> None:
 	PEER.send("hook", event=event)
 
 
+def tell_stuck(screen: str) -> None:
+	PEER.send("session_stuck", screen=screen)
+
+
 def tell_speaking(vowels: Vowels) -> None:
 	PEER.send("speaking", vowels=vowels)
 
@@ -312,8 +316,11 @@ def report_ready(session: Session, listener: Listener, face: Face) -> None:
 
 
 def report_update(session: Session, face: Face) -> None:
-	""" Tells her face which surfaces of Claude Code broke, when the session starts on a version the probes did not check yet. """
-	if not (face.ready.wait(STARTUP_S) and session.started.wait(STARTUP_S)):
+	""" Tells her face what the session waits for if it does not start, or what broke on a version the probes did not check yet. """
+	if not face.ready.wait(STARTUP_S):
+		return
+	if not session.started.wait(STARTUP_S):
+		tell_stuck(terminal.bottom(session.text()))
 		return
 	if (update := probes.after_update()) and update.broken:
 		PEER.send("claude_code_broke", version=update.version, broken=update.broken)
@@ -389,6 +396,7 @@ def run() -> None:
 	hooks.posted.connect(tell_hook)
 	hooks.asked.connect(core.on_permission_asked)
 	session.died.connect(core.on_session_died)
+	session.stuck.connect(tell_stuck)
 	voice.started.connect(tell_speaking)
 	for heard, kind in (
 		(listener.woke, "woke"), (listener.dictated, "dictated"), (listener.heard, "heard"),

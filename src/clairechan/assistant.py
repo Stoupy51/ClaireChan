@@ -201,9 +201,10 @@ class Assistant(QObject):
 
 	def on_child_finished(self, name: str, child_id: str) -> None:
 		LOG.info("Child session finished: %s", name)
+		rules = "~/.claude/rules/reports.md"
 		self.commands.append(tr(
-			f"The child session {name} ({child_id}) has finished its turn: read its rapport.md and sum it up for me as ~/.claude/rules/reports.md says.",
-			f"La session fille {name} ({child_id}) a fini son tour : lis son rapport.md et résume-le-moi comme le dit ~/.claude/rules/reports.md.",
+			f"The child session {name} ({child_id}) has finished its turn: read its rapport.md and sum it up for me as {rules} says.",
+			f"La session fille {name} ({child_id}) a fini son tour : lis son rapport.md et résume-le-moi comme le dit {rules}.",
 		))
 		self.flush()
 
@@ -370,6 +371,17 @@ class Assistant(QObject):
 		""" Claude Code stopped by itself and was started again: what it was running is gone. """
 		self.agents.clear()
 		self.on_failure(tr("my Claude session stopped, I started it again", "ma session Claude s'est arrêtée, je l'ai relancée"))
+
+	def on_session_stuck(self, screen: str) -> None:
+		""" The hidden session took no prompt, held by what its screen shows, a dialog the user never sees. """
+		LOG.warning("The session is stuck on:\n%s", screen)
+		said = tr(
+			"My Claude session is not taking your requests, its hidden screen waits for this:",
+			"Ma session Claude ne prend pas tes demandes, son écran caché attend ceci :",
+		)
+		self.appear("sad", bubble=f"{said}\n\n{screen}")
+		self.dismiss.start(reading_ms(said + screen))
+		self.say_aloud(said)
 
 	def on_claude_code_broke(self, version: str, broken: dict[str, str]) -> None:
 		""" Claude Code updated, and what the app reads of some of its surfaces no longer has the shape it expects. """
