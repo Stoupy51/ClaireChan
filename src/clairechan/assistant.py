@@ -202,8 +202,8 @@ class Assistant(QObject):
 	def on_child_finished(self, name: str, child_id: str) -> None:
 		LOG.info("Child session finished: %s", name)
 		self.commands.append(tr(
-			f"The child session {name} ({child_id}) has finished its turn: read its rapport.md and sum it up for me.",
-			f"La session fille {name} ({child_id}) a fini son tour : lis son rapport.md et résume-le-moi.",
+			f"The child session {name} ({child_id}) has finished its turn: read its rapport.md and sum it up for me as ~/.claude/rules/reports.md says.",
+			f"La session fille {name} ({child_id}) a fini son tour : lis son rapport.md et résume-le-moi comme le dit ~/.claude/rules/reports.md.",
 		))
 		self.flush()
 
