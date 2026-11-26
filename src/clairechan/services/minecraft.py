@@ -1,7 +1,6 @@
 """ The test Minecraft client of tools/minecraft, a game instance of its own, driven through the HTTP bridge its mod opens. """
 # Imports
 import json
-import subprocess
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -11,6 +10,7 @@ from stouputils.typing import JsonDict
 from clairechan.config import ROOT
 from clairechan.i18n import tr
 from clairechan.report import Answer, Picture
+from clairechan.services import hidden_desktop
 
 # Constants
 BRIDGE: str = "http://127.0.0.1:47621"
@@ -21,13 +21,10 @@ CLIENT: str = str(ROOT / "tools" / "minecraft")
 
 # Functions
 def start() -> str:
-	""" Starts the test client unless it already answers. It takes about a minute, until `state` says loading: false. """
+	""" Starts the test client on a hidden desktop at idle priority unless it answers; ready when `state` says loading: false. """
 	if call("/state").startswith("{"):
 		return tr("The test client is already running.", "Le client de test tourne déjà.")
-	subprocess.Popen(
-		[f"{CLIENT}/gradlew.bat", "runClient", "--console=plain"], cwd=CLIENT,
-		stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, creationflags=subprocess.CREATE_NO_WINDOW,
-	)
+	hidden_desktop.run(f'"{CLIENT}\\gradlew.bat" runClient --console=plain', CLIENT)
 	return tr("The test client is starting.", "Le client de test démarre.")
 
 

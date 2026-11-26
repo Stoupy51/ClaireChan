@@ -3,6 +3,7 @@
 import json
 import os
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, override
@@ -14,7 +15,7 @@ from stouputils.typing import JsonDict
 from clairechan import i18n
 from clairechan.actions import find, route
 from clairechan.claude_code import background, panels, transcripts
-from clairechan.services import agents, alarms, children, claude, minecraft, programs, weather
+from clairechan.services import agents, alarms, children, claude, hidden_desktop, minecraft, programs, weather
 from clairechan.services.alarms import ALARMS
 
 
@@ -143,6 +144,16 @@ def test_a_minecraft_tool_relays_the_bridge_answer_and_says_when_the_client_is_o
 	server.server_close()
 	assert find("minecraft_state").run({}) == "The test client is not running: start it with minecraft_start."
 
+
+
+def test_a_program_started_on_the_hidden_desktop_runs_to_the_end(tmp_path: Path) -> None:
+	done = tmp_path / "done.txt"
+	hidden_desktop.run(f'cmd /c echo ok> "{done}"', str(tmp_path))
+	for _ in range(100):
+		if done.exists():
+			break
+		time.sleep(0.1)
+	assert done.read_text().strip() == "ok"
 
 
 def test_the_agent_progress_tells_what_a_running_agent_and_a_finished_one_did(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
