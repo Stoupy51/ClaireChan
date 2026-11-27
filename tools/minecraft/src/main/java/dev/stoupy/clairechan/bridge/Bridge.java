@@ -4,6 +4,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.mojang.blaze3d.platform.InputConstants;
+import com.mojang.blaze3d.platform.Window;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
 import java.io.IOException;
@@ -28,12 +29,16 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.message.v1.ClientReceiveMessageEvents;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.MouseHandler;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.screens.ConnectScreen;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.client.multiplayer.ServerData;
 import net.minecraft.client.multiplayer.resolver.ServerAddress;
+import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
@@ -65,6 +70,7 @@ public final class Bridge implements ClientModInitializer {
 			route(server, "/command", Bridge::command);
 			route(server, "/hold", Bridge::hold);
 			route(server, "/look", Bridge::look);
+			route(server, "/click", Bridge::click);
 			route(server, "/connect", Bridge::connect);
 			route(server, "/disconnect", body -> disconnect());
 			route(server, "/quit", body -> quit());
@@ -223,6 +229,25 @@ public final class Bridge implements ClientModInitializer {
 		}
 		player.setYRot(body.get("yaw").getAsFloat());
 		player.setXRot(body.get("pitch").getAsFloat());
+		return ok();
+	}
+
+	/** Clicks a pixel of the screenshots straight into the open screen, since SDL drops OS clicks on a window of the hidden desktop. */
+	static JsonObject click(JsonObject body) {
+		Minecraft client = Minecraft.getInstance();
+		Screen screen = client.gui.screen();
+		if (screen == null) {
+			return error("No screen open.");
+		}
+		Window window = client.getWindow();
+		double x = MouseHandler.getScaledXPos(window, body.get("x").getAsDouble());
+		double y = MouseHandler.getScaledYPos(window, body.get("y").getAsDouble());
+		// SDL numbers the buttons: 1 left, 2 middle, 3 right.
+		int button = body.has("button") ? body.get("button").getAsInt() : InputConstants.MOUSE_BUTTON_LEFT;
+		MouseButtonEvent event = new MouseButtonEvent(x, y, new MouseButtonInfo(button, 0));
+		screen.mouseMoved(x, y);
+		screen.mouseClicked(event, false);
+		screen.mouseReleased(event);
 		return ok();
 	}
 

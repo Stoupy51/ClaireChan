@@ -378,6 +378,20 @@ ACTIONS: list[Action] = [
 		child=True,
 	),
 	Action(
+		name="minecraft_click",
+		description="Clicks a pixel of the test client's open screen, in the coordinates of minecraft_screenshot.",
+		run=lambda arguments: minecraft.call(
+			"/click", {"x": arguments["x"] or "0", "y": arguments["y"] or "0", "button": arguments.get("button") or "1"}
+		),
+		parameters={
+			"x": Parameter("Pixel column.", kind="integer", required=True),
+			"y": Parameter("Pixel row.", kind="integer", required=True),
+			"button": Parameter("1 left, 2 middle, 3 right, 1 by default.", kind="integer"),
+		},
+		threaded=True,
+		child=True,
+	),
+	Action(
 		name="minecraft_screenshot",
 		description="Shows you what the test client shows, saved into a picture file.",
 		run=lambda _: minecraft.screenshot(),
