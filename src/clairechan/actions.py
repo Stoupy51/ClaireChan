@@ -66,6 +66,7 @@ WINDOW: Parameter = Parameter(
 	"Its program's file name, such as firefox.exe, for its frontmost window, or its id from list_windows.", required=True,
 )
 ELEMENT: Parameter = Parameter("Its number from the last read_window.", kind="integer", required=True)
+CLIENT: Parameter = Parameter("The test client's number, as minecraft_start gave it.", kind="integer", required=True)
 ACTIONS: list[Action] = [
 	Action(
 		name="screenshot",
@@ -311,7 +312,8 @@ ACTIONS: list[Action] = [
 	),
 	Action(
 		name="minecraft_start",
-		description="Starts the test Minecraft client, a game instance of its own, never the user's. "
+		description="Starts a test Minecraft client, a game instance of its own, never the user's, and tells its number, "
+		"which the other minecraft tools take. Up to 3 run at once: call it again for more players on your server. "
 		"Ready once minecraft_state says loading: false.",
 		run=lambda _: minecraft.start(),
 		child=True,
@@ -319,38 +321,43 @@ ACTIONS: list[Action] = [
 	Action(
 		name="minecraft_state",
 		description="The test client's screen, and in a world the player's position, rotation, health, gamemode and hotbar, as JSON.",
-		run=lambda _: minecraft.call("/state"),
+		run=lambda arguments: minecraft.call(client_number(arguments), "/state"),
+		parameters={"client": CLIENT},
 		threaded=True,
 		child=True,
 	),
 	Action(
 		name="minecraft_connect",
-		description="Joins a server with the test client, whose player is ClaireChan, so the server needs online-mode=false.",
-		run=lambda arguments: minecraft.call("/connect", {"address": arguments.get("address") or "localhost"}),
-		parameters={"address": Parameter("host:port, localhost by default.")},
+		description="Joins a server with the test client, whose player is ClaireChan followed by its number from 2 on, "
+		"so the server needs online-mode=false.",
+		run=lambda arguments: minecraft.call(
+			client_number(arguments), "/connect", {"address": arguments.get("address") or "localhost"}
+		),
+		parameters={"client": CLIENT, "address": Parameter("host:port, localhost by default.")},
 		threaded=True,
 		child=True,
 	),
 	Action(
 		name="minecraft_disconnect",
 		description="Leaves the world or server of the test client, back to the title screen.",
-		run=lambda _: minecraft.call("/disconnect"),
+		run=lambda arguments: minecraft.call(client_number(arguments), "/disconnect"),
+		parameters={"client": CLIENT},
 		threaded=True,
 		child=True,
 	),
 	Action(
 		name="minecraft_command",
 		description="Runs a command as the test client's player. Its feedback arrives in minecraft_chat.",
-		run=lambda arguments: minecraft.call("/command", {"command": arguments["command"] or ""}),
-		parameters={"command": Parameter("The command, with or without its slash.", required=True)},
+		run=lambda arguments: minecraft.call(client_number(arguments), "/command", {"command": arguments["command"] or ""}),
+		parameters={"client": CLIENT, "command": Parameter("The command, with or without its slash.", required=True)},
 		threaded=True,
 		child=True,
 	),
 	Action(
 		name="minecraft_chat",
 		description="The chat, system and action bar lines the test client received from an index on, and the next index.",
-		run=lambda arguments: minecraft.call("/chat", {"after": arguments.get("after") or "0"}),
-		parameters={"after": Parameter("Index of the first line, 0 by default.", kind="integer")},
+		run=lambda arguments: minecraft.call(client_number(arguments), "/chat", {"after": arguments.get("after") or "0"}),
+		parameters={"client": CLIENT, "after": Parameter("Index of the first line, 0 by default.", kind="integer")},
 		threaded=True,
 		child=True,
 	),
@@ -358,8 +365,11 @@ ACTIONS: list[Action] = [
 		name="minecraft_hold",
 		description="Holds a key of the test client for some ticks, after one click: forward, back, left, right, jump, sneak, sprint, "
 		"use, attack, drop, swapOffhand, inventory or hotbar.1 to hotbar.9.",
-		run=lambda arguments: minecraft.call("/hold", {"key": arguments["key"] or "", "ticks": arguments.get("ticks") or "1"}),
+		run=lambda arguments: minecraft.call(
+			client_number(arguments), "/hold", {"key": arguments["key"] or "", "ticks": arguments.get("ticks") or "1"}
+		),
 		parameters={
+			"client": CLIENT,
 			"key": Parameter("The key's name.", required=True),
 			"ticks": Parameter("How long, in ticks of 1/20 s, 1 by default.", kind="integer"),
 		},
@@ -369,8 +379,11 @@ ACTIONS: list[Action] = [
 	Action(
 		name="minecraft_look",
 		description="Turns the test client's player to a rotation.",
-		run=lambda arguments: minecraft.call("/look", {"yaw": arguments.get("yaw") or "0", "pitch": arguments.get("pitch") or "0"}),
+		run=lambda arguments: minecraft.call(
+			client_number(arguments), "/look", {"yaw": arguments.get("yaw") or "0", "pitch": arguments.get("pitch") or "0"}
+		),
 		parameters={
+			"client": CLIENT,
 			"yaw": Parameter("Degrees, 0 south, 90 west.", kind="number"),
 			"pitch": Parameter("Degrees, -90 up, 90 down.", kind="number"),
 		},
@@ -381,9 +394,11 @@ ACTIONS: list[Action] = [
 		name="minecraft_click",
 		description="Clicks a pixel of the test client's open screen, in the coordinates of minecraft_screenshot.",
 		run=lambda arguments: minecraft.call(
-			"/click", {"x": arguments["x"] or "0", "y": arguments["y"] or "0", "button": arguments.get("button") or "1"}
+			client_number(arguments), "/click",
+			{"x": arguments["x"] or "0", "y": arguments["y"] or "0", "button": arguments.get("button") or "1"},
 		),
 		parameters={
+			"client": CLIENT,
 			"x": Parameter("Pixel column.", kind="integer", required=True),
 			"y": Parameter("Pixel row.", kind="integer", required=True),
 			"button": Parameter("1 left, 2 middle, 3 right, 1 by default.", kind="integer"),
@@ -394,14 +409,16 @@ ACTIONS: list[Action] = [
 	Action(
 		name="minecraft_screenshot",
 		description="Shows you what the test client shows, saved into a picture file.",
-		run=lambda _: minecraft.screenshot(),
+		run=lambda arguments: minecraft.screenshot(client_number(arguments)),
+		parameters={"client": CLIENT},
 		threaded=True,
 		child=True,
 	),
 	Action(
 		name="minecraft_quit",
 		description="Closes the test client.",
-		run=lambda _: minecraft.call("/quit"),
+		run=lambda arguments: minecraft.call(client_number(arguments), "/quit"),
+		parameters={"client": CLIENT},
 		threaded=True,
 		child=True,
 	),
@@ -450,6 +467,10 @@ def chosen_model(arguments: Mapping[str, str | None]) -> str | None:
 	"""
 	model = (arguments["model"] or "").lower()
 	return model if model in MODELS else None
+
+
+def client_number(arguments: Mapping[str, str | None]) -> int:
+	return int(arguments["client"] or "0")
 
 
 def set_timer(amount: str, unit: str, label: str) -> str:

@@ -137,12 +137,32 @@ def test_a_minecraft_tool_relays_the_bridge_answer_and_says_when_the_client_is_o
 
 	server = HTTPServer(("127.0.0.1", 0), Bridge)
 	threading.Thread(target=server.handle_request, daemon=True).start()
-	monkeypatch.setattr(minecraft, "BRIDGE", f"http://127.0.0.1:{server.server_port}")
-	assert find("minecraft_hold").run({"key": "use"}) == '{"ok":true}'
+	monkeypatch.setattr(minecraft, "BRIDGE_PORT", server.server_port - 2)
+	assert find("minecraft_hold").run({"client": "2", "key": "use"}) == '{"ok":true}'
 	assert received == [{"key": "use", "ticks": "1"}]
 
 	server.server_close()
-	assert find("minecraft_state").run({}) == "The test client is not running: start it with minecraft_start."
+	assert find("minecraft_state").run({"client": "2"}) == "Test client 2 is not running: start one with minecraft_start."
+
+
+def test_two_sessions_starting_a_minecraft_client_at_once_get_different_ones(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+	commands: list[str] = []
+	def launch(command: str, cwd: str) -> None:
+		commands.append(command)
+	monkeypatch.setattr(hidden_desktop, "run", launch)
+	monkeypatch.setattr(minecraft, "CLIENT", tmp_path)
+	monkeypatch.setattr(minecraft, "LEASES", tmp_path / "leases")
+	monkeypatch.setattr(minecraft, "BRIDGE_PORT", 1)
+	(tmp_path / "run" / "mods").mkdir(parents=True)
+	(tmp_path / "run" / "options.txt").write_text("guiScale:2")
+	(tmp_path / "run" / "saves").mkdir()
+
+	answers = [minecraft.start() for _ in range(4)]
+	assert [command.split()[1] for command in commands] == ["runClient", "runClient2", "runClient3"]
+	assert answers[3] == "All 3 test clients are in use."
+	assert (tmp_path / "run3" / "options.txt").read_text() == "guiScale:2"
+	assert (tmp_path / "run3" / "mods").is_dir()
+	assert not (tmp_path / "run3" / "saves").exists()
 
 
 

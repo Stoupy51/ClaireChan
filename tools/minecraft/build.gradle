@@ -16,13 +16,15 @@ loom {
 			// Stack kept ready under every Java frame: shaderc recurses deeper than the JVM grows a stack from native code, which kills the client on Windows.
 			vmArg '-XX:StackShadowPages=38'
 		}
-		// A second player for tests that need two, such as two game modes at once.
-		client2 {
-			inherit client
-			configName = 'Minecraft Client 2'
-			runDir 'run2'
-			programArgs '--username', 'ClaireChan2'
-			vmArg '-Dclairechan.bridge.port=47622'
+		// More clients, for several sessions testing at once or several players in one test, CLIENTS in services/minecraft.py.
+		(2..3).each { n ->
+			register("client$n") {
+				inherit client
+				configName = "Minecraft Client $n"
+				runDir "run$n"
+				programArgs '--username', "ClaireChan$n"
+				vmArg "-Dclairechan.bridge.port=${47620 + n}"
+			}
 		}
 	}
 }

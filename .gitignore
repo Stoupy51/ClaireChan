@@ -6,7 +6,5 @@ Temp/
 *.mp4
 tools/minecraft/.gradle/
 tools/minecraft/build/
-tools/minecraft/run/
-tools/minecraft/run_client.log
-tools/minecraft/run2/
-tools/minecraft/run_client2.log
+tools/minecraft/run*/
+tools/minecraft/run_client*.log
